@@ -131,9 +131,11 @@ def check_once():
         if slots_found:
             bot.send_message(chat_id=telegram_chat_id, text='Slots found!')
             bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
-        else:
+            bot.send_message(chat_id=telegram_chat_id, text=URL)
+        else:  # no slots found
             # bot.send_message(chat_id=telegram_chat_id, text='Did not find any slots...')
             # bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
+            # bot.send_message(chat_id=telegram_chat_id, text=URL)
             pass
 
         logger.debug('done')
