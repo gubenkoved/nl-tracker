@@ -1,14 +1,15 @@
+import argparse
+import json
 import logging
 import os.path
+import time
 from datetime import datetime
-import json
-import telegram
 
 import coloredlogs
+import telegram
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
-
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -31,6 +32,7 @@ def get_driver(headless=True, scale_factor=2.0):
     options.add_argument('window-size=1024,768')
     options.add_argument(f'high-dpi-support={scale_factor}')
     options.add_argument(f'force-device-scale-factor={scale_factor}')
+    options.add_argument('--log-level=3')  # disable logs
 
     if headless:
         options.add_argument('--headless')
@@ -96,7 +98,7 @@ def check_available_slots(driver):
 
     slots_found = NO_DATES_MARKER not in message_span.text
 
-    logger.warning('SLOTS FOUND? %s', slots_found)
+    logger.info('SLOTS FOUND? %s', slots_found)
 
     return slots_found
 
@@ -106,15 +108,21 @@ def read_config():
         return json.loads(f.read())
 
 
-def main():
-    logger.info('starting')
+def require_config_key(config, config_key):
+    if config_key not in config:
+        raise RuntimeError('"%s" config key expected')
+    return config[config_key]
+
+
+def check_once():
+    logger.debug('starting')
     driver = get_driver()
     try:
         config = read_config()
-        logger.info('config: %s', config)
+        logger.debug('config: %s', config)
 
-        telegram_chat_id = config.get('telegram_chat_id')
-        telegram_bot_token = config.get('telegram_bot_api_token')
+        telegram_chat_id = require_config_key(config, 'telegram_chat_id')
+        telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
 
         bot = telegram.Bot(telegram_bot_token)
 
@@ -128,13 +136,19 @@ def main():
             # bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
             pass
 
-        logger.info('done')
+        logger.debug('done')
     except Exception:
         driver.save_screenshot(get_screenshot_path('error'))
         logger.exception('An error occurred')
     finally:
-        logger.info('closing driver')
+        logger.debug('closing driver')
         driver.close()
+
+
+def monitor(period_seconds):
+    while True:
+        check_once()
+        time.sleep(period_seconds)
 
 
 if __name__ == '__main__':
@@ -143,4 +157,30 @@ if __name__ == '__main__':
         format='%(asctime)s %(levelname)s:%(message)s',
         level=logging.DEBUG)
     coloredlogs.install(level=logging.DEBUG)
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--log-level', type=str, default='INFO', required=False)
+
+    subparsers = parser.add_subparsers()
+
+    check_parser = subparsers.add_parser('check')
+    check_parser.set_defaults(command='check')
+
+    monitor_parser = subparsers.add_parser('monitor')
+    monitor_parser.add_argument('--period-seconds', type=int, default=300, required=False)
+    monitor_parser.set_defaults(command='monitor')
+
+    args = parser.parse_args()
+
+    log_level = args.log_level.upper()
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    coloredlogs.set_level(log_level)
+
+    logger.info('parsed args: %s', args)
+
+    if args.command == 'check':
+        check_once()
+    else:
+        monitor(period_seconds=args.period_seconds)
