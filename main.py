@@ -1,6 +1,8 @@
 import logging
 import os.path
 from datetime import datetime
+import json
+import telegram
 
 import coloredlogs
 from selenium import webdriver
@@ -60,7 +62,7 @@ def save_page_source(page_source, stage):
         f.write(page_source)
 
 
-def get_available_slots(driver):
+def check_available_slots(driver):
     driver.get(URL)
 
     save_page_source(driver.page_source, 'loaded')
@@ -92,17 +94,40 @@ def get_available_slots(driver):
 
     message_span = driver.find_element(By.ID, 'plhMain_lblMsg')
 
-    if NO_DATES_MARKER in message_span.text:
-        logger.info('RESULT: NO DATES AVAILABLE!')
-    else:
-        logger.warning('RESULT: THERE ARE DATES AVAILABLE!')
+    slots_found = NO_DATES_MARKER not in message_span.text
+
+    logger.warning('SLOTS FOUND? %s', slots_found)
+
+    return slots_found
+
+
+def read_config():
+    with open('config.json', 'r') as f:
+        return json.loads(f.read())
 
 
 def main():
     logger.info('starting')
     driver = get_driver()
     try:
-        get_available_slots(driver)
+        config = read_config()
+        logger.info('config: %s', config)
+
+        telegram_chat_id = config.get('telegram_chat_id')
+        telegram_bot_token = config.get('telegram_bot_api_token')
+
+        bot = telegram.Bot(telegram_bot_token)
+
+        slots_found = check_available_slots(driver)
+
+        if slots_found:
+            bot.send_message(chat_id=telegram_chat_id, text='Slots found!')
+            bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
+        else:
+            # bot.send_message(chat_id=telegram_chat_id, text='Did not find any slots...')
+            # bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
+            pass
+
         logger.info('done')
     except Exception:
         driver.save_screenshot(get_screenshot_path('error'))
