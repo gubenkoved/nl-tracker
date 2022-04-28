@@ -10,6 +10,7 @@ import telegram
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
+from selenium.webdriver.firefox.service import Service as FFService
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -23,8 +24,7 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 logger = logging.getLogger(__name__)
 
 
-def get_driver(headless=True, scale_factor=2.0):
-    path = './bin/chromedriver_v100.exe'
+def get_chrome_driver(path, headless=True, scale_factor=2.0):
     path = os.path.abspath(path)
 
     options = webdriver.ChromeOptions()
@@ -39,6 +39,18 @@ def get_driver(headless=True, scale_factor=2.0):
         options.add_argument('--disable-gpu')
 
     return webdriver.Chrome(path, options=options)
+
+
+def get_firefox_driver(path, headless=True, scale_factor=2.0):
+    path = os.path.abspath(path)
+
+    options = webdriver.FirefoxOptions()
+    options.headless = headless
+    options.set_preference('layout.css.devPixelsPerPx''', str(scale_factor))
+
+    service = FFService(path)
+
+    return webdriver.Firefox(service=service, options=options)
 
 
 def ensure_dir(path):
@@ -109,7 +121,7 @@ def check_available_slots(driver):
 
     slots_found = NO_DATES_MARKER not in message_span.text
 
-    logger.info('SLOTS FOUND? %s', slots_found)
+    logger.info('Found slots? %s', slots_found)
 
     page_screenshot = driver.get_screenshot_as_png()
     calendar_screenshot = None
@@ -143,7 +155,11 @@ def check_available_slots(driver):
 
 
 def read_config():
-    with open('config.json', 'r') as f:
+    path = 'config.json'
+    # to simplify development
+    if os.path.exists('local.config.json'):
+        path = 'local.config.json'
+    with open(path, 'r') as f:
         return json.loads(f.read())
 
 
@@ -155,10 +171,16 @@ def require_config_key(config, config_key):
 
 def check_once():
     logger.debug('starting')
-    driver = get_driver()
+
+    driver = None
+
     try:
         config = read_config()
         logger.debug('config: %s', config)
+
+        driver_path = require_config_key(config, 'driver_path')
+
+        driver = get_firefox_driver(driver_path)
 
         telegram_chat_id = require_config_key(config, 'telegram_chat_id')
         telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
@@ -168,7 +190,7 @@ def check_once():
         result = check_available_slots(driver)
 
         if result.found:
-            bot.send_message(chat_id=telegram_chat_id, text='Slots found!')
+            bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
             if result.screenshot:
                 bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
                 # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
@@ -181,11 +203,13 @@ def check_once():
 
         logger.debug('done')
     except Exception:
-        driver.save_screenshot(get_screenshot_path('error'))
+        if driver:
+            driver.save_screenshot(get_screenshot_path('error'))
         logger.exception('An error occurred')
     finally:
         logger.debug('closing driver')
-        driver.close()
+        if driver:
+            driver.close()
 
 
 def monitor(period_seconds):

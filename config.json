@@ -1,4 +1,5 @@
 {
+  "driver_path": "INSERT VALUE HERE",
   "telegram_chat_id": "INSERT VALUE HERE",
   "telegram_bot_api_token": "INSERT VALUE HERE"
 }
