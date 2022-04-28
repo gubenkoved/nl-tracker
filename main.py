@@ -64,16 +64,28 @@ def save_page_source(page_source, stage):
         f.write(page_source)
 
 
+class SlotsCheckResults:
+    def __init__(self, found, screenshot):
+        self.found = found
+        self.screenshot = screenshot
+
+
+def page_trace(driver, checkpoint, screenshot=True):
+    save_page_source(driver.page_source, checkpoint)
+
+    if screenshot:
+        driver.save_screenshot(get_screenshot_path(checkpoint))
+
+
 def check_available_slots(driver):
     driver.get(URL)
 
-    save_page_source(driver.page_source, 'loaded')
-    driver.save_screenshot(get_screenshot_path('loaded'))
+    page_trace(driver, 'loaded')
 
     schedule_link = driver.find_element(By.LINK_TEXT, 'Schedule Appointment')
     schedule_link.click()
 
-    save_page_source(driver.page_source, 'schedule-clicked')
+    page_trace(driver, 'schedule-clicked')
 
     city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
     city_picker_select = Select(city_picker)
@@ -82,7 +94,7 @@ def check_available_slots(driver):
     city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
     city_submit_btn.click()
 
-    save_page_source(driver.page_source, 'city-submitted')
+    page_trace(driver, 'city-submitted')
 
     category_picker = driver.find_element(By.ID, 'plhMain_cboVisaCategory')
     category_picker_select = Select(category_picker)
@@ -91,8 +103,7 @@ def check_available_slots(driver):
     continue_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
     continue_btn.click()
 
-    driver.save_screenshot(get_screenshot_path('final'))
-    save_page_source(driver.page_source, 'final')
+    page_trace(driver, 'before-calendar')
 
     message_span = driver.find_element(By.ID, 'plhMain_lblMsg')
 
@@ -100,7 +111,35 @@ def check_available_slots(driver):
 
     logger.info('SLOTS FOUND? %s', slots_found)
 
-    return slots_found
+    page_screenshot = driver.get_screenshot_as_png()
+    calendar_screenshot = None
+
+    if slots_found:
+        try:
+            given_name_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxFName_0')
+            surname_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxLName_0')
+            contact_number_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxContactNumber_0')
+            email_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxEmailAddress_0')
+
+            given_name_textbox.send_keys('GIVENNAME')
+            surname_textbox.send_keys('SURNAME')
+            contact_number_textbox.send_keys('79170000000')
+            email_textbox.send_keys('tracker@gmail.com')
+            confirm_picker = driver.find_element(By.ID, 'plhMain_cboConfirmation')
+            confirm_picker_select = Select(confirm_picker)
+            confirm_picker_select.select_by_visible_text('I confirm the above statement')
+
+            submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
+            submit_btn.click()
+
+            page_trace(driver, 'calendar')
+
+            calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
+            calendar_screenshot = calendar_table.screenshot_as_png
+        except Exception:
+            logger.error('Unable to get result screenshot', exc_info=True)
+
+    return SlotsCheckResults(slots_found, calendar_screenshot or page_screenshot)
 
 
 def read_config():
@@ -126,11 +165,13 @@ def check_once():
 
         bot = telegram.Bot(telegram_bot_token)
 
-        slots_found = check_available_slots(driver)
+        result = check_available_slots(driver)
 
-        if slots_found:
+        if result.found:
             bot.send_message(chat_id=telegram_chat_id, text='Slots found!')
-            bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
+            if result.screenshot:
+                bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
+                # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
             bot.send_message(chat_id=telegram_chat_id, text=URL)
         else:  # no slots found
             # bot.send_message(chat_id=telegram_chat_id, text='Did not find any slots...')
