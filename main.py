@@ -50,7 +50,12 @@ def get_firefox_driver(path, headless=True, scale_factor=2.0):
 
     service = FFService(path)
 
-    return webdriver.Firefox(service=service, options=options)
+    driver = webdriver.Firefox(service=service, options=options)
+
+    driver.set_window_position(0, 0)
+    driver.set_window_size(1280, 1080)
+
+    return driver
 
 
 def ensure_dir(path):
