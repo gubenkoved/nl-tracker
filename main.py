@@ -119,39 +119,36 @@ def check_available_slots(driver):
 
     message_span = driver.find_element(By.ID, 'plhMain_lblMsg')
 
-    slots_found = NO_DATES_MARKER not in message_span.text
+    if NO_DATES_MARKER in message_span.text:
+        logger.info('No slots found')
+        page_screenshot = driver.get_screenshot_as_png()
+        return SlotsCheckResults(False, screenshot=page_screenshot)
 
-    logger.info('Found slots? %s', slots_found)
+    logger.info('Looks like there are some slots, getting the calendar')
 
-    page_screenshot = driver.get_screenshot_as_png()
-    calendar_screenshot = None
+    # slots seem to be found, get the calendar
+    given_name_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxFName_0')
+    surname_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxLName_0')
+    contact_number_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxContactNumber_0')
+    email_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxEmailAddress_0')
 
-    if slots_found:
-        try:
-            given_name_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxFName_0')
-            surname_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxLName_0')
-            contact_number_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxContactNumber_0')
-            email_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxEmailAddress_0')
+    given_name_textbox.send_keys('GIVENNAME')
+    surname_textbox.send_keys('SURNAME')
+    contact_number_textbox.send_keys('79170000000')
+    email_textbox.send_keys('tracker@gmail.com')
+    confirm_picker = driver.find_element(By.ID, 'plhMain_cboConfirmation')
+    confirm_picker_select = Select(confirm_picker)
+    confirm_picker_select.select_by_visible_text('I confirm the above statement')
 
-            given_name_textbox.send_keys('GIVENNAME')
-            surname_textbox.send_keys('SURNAME')
-            contact_number_textbox.send_keys('79170000000')
-            email_textbox.send_keys('tracker@gmail.com')
-            confirm_picker = driver.find_element(By.ID, 'plhMain_cboConfirmation')
-            confirm_picker_select = Select(confirm_picker)
-            confirm_picker_select.select_by_visible_text('I confirm the above statement')
+    submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
+    submit_btn.click()
 
-            submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
-            submit_btn.click()
+    page_trace(driver, 'calendar')
 
-            page_trace(driver, 'calendar')
+    calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
+    calendar_screenshot = calendar_table.screenshot_as_png
 
-            calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
-            calendar_screenshot = calendar_table.screenshot_as_png
-        except Exception:
-            logger.error('Unable to get result screenshot', exc_info=True)
-
-    return SlotsCheckResults(slots_found, calendar_screenshot or page_screenshot)
+    return SlotsCheckResults(True, calendar_screenshot)
 
 
 def read_config():
@@ -190,6 +187,7 @@ def check_once():
         result = check_available_slots(driver)
 
         if result.found:
+            logger.info('notifying about found slots')
             bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
             if result.screenshot:
                 bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
