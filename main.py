@@ -165,6 +165,19 @@ def read_config():
         return json.loads(f.read())
 
 
+def read_state():
+    path = 'state.json'
+    if not os.path.exists(path):
+        return {}
+    with open('state.json', 'r') as f:
+        return json.loads(f.read())
+
+
+def save_state(state):
+    with open('state.json', 'w') as f:
+        f.write(json.dumps(state))
+
+
 def require_config_key(config, config_key):
     if config_key not in config:
         raise RuntimeError('"%s" config key expected')
@@ -189,20 +202,22 @@ def check_once():
 
         bot = telegram.Bot(telegram_bot_token)
 
+        state = read_state()
         result = check_available_slots(driver)
 
-        if result.found:
-            logger.info('notifying about found slots')
-            bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
-            if result.screenshot:
-                bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
-                # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
-            bot.send_message(chat_id=telegram_chat_id, text=URL)
-        else:  # no slots found
-            # bot.send_message(chat_id=telegram_chat_id, text='Did not find any slots...')
-            # bot.send_photo(chat_id=telegram_chat_id, photo=driver.get_screenshot_as_png())
-            # bot.send_message(chat_id=telegram_chat_id, text=URL)
-            pass
+        if state.get('slots_found', False) != result.found:
+            logger.info('notifying about state change')
+
+            if result.found:
+                bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
+                if result.screenshot:
+                    bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
+                    # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
+                bot.send_message(chat_id=telegram_chat_id, text=URL)
+            else:  # no slots found
+                bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
+
+        save_state(dict(state, slots_found=result.found))
 
         logger.debug('done')
     except Exception:
