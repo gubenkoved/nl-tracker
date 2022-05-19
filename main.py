@@ -1,9 +1,11 @@
 import argparse
+import collections
 import json
 import logging
 import os.path
 import time
 from datetime import datetime
+from typing import List
 
 import coloredlogs
 import telegram
@@ -86,7 +88,7 @@ def save_page_source(page_source, stage):
 
 
 class SlotsCheckResults:
-    def __init__(self, available_dates, screenshots):
+    def __init__(self, available_dates: collections.OrderedDict, screenshots: List[bytes]):
         self.available_dates = available_dates
         self.screenshots = screenshots
 
@@ -112,6 +114,22 @@ def parse_available_dates(calendar_element):
     for day_element in calendar_element.find_elements(By.CLASS_NAME, 'OpenDateAllocated'):
         days.append(int(day_element.text))
     return month, days
+
+
+def get_available_slots_diff(baseline: collections.OrderedDict, current: collections.OrderedDict):
+    diff = collections.OrderedDict()
+
+    for month in baseline:
+        removed_dates = set(baseline[month]) - set(current.get(month, []))
+        if removed_dates:
+            diff.setdefault(month, {})['removed'] = removed_dates
+
+    for month in current:
+        added_dates = set(current[month]) - set(baseline.get(month, []))
+        if added_dates:
+            diff.setdefault(month, {})['added'] = added_dates
+
+    return diff
 
 
 def check_available_slots(driver):
@@ -147,7 +165,7 @@ def check_available_slots(driver):
     if NO_DATES_MARKER in message_span.text:
         logger.info('No slots found')
         page_screenshot = driver.get_screenshot_as_png()
-        return SlotsCheckResults({}, screenshots=[page_screenshot])
+        return SlotsCheckResults(collections.OrderedDict(), screenshots=[page_screenshot])
 
     logger.info('Looks like there are some slots, getting the calendar')
 
@@ -171,7 +189,7 @@ def check_available_slots(driver):
     page_trace(driver, 'calendar')
 
     calendar_screenshots = []
-    available_dates = {}
+    available_dates = collections.OrderedDict()
 
     while True:
         calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
@@ -191,6 +209,8 @@ def check_available_slots(driver):
 
         if no_slots_element:
             break
+
+    logger.debug('available dates: %s', available_dates)
 
     return SlotsCheckResults(available_dates, calendar_screenshots)
 
@@ -259,6 +279,21 @@ def check_once():
                 for screenshot in result.screenshots:
                     media.append(telegram.InputMediaPhoto(screenshot))
                 bot.send_media_group(chat_id=telegram_chat_id, media=media)
+
+                # send the diff
+                diff = get_available_slots_diff(prev_available_dates, result.available_dates)
+
+                logger.debug('slots diff: %s', diff)
+
+                diff_description = ''
+                for month in diff:
+                    for day in diff[month].get('removed', []):
+                        diff_description += '\t- %s %s\n' % (day, month)
+                    for day in diff[month].get('added', []):
+                        diff_description += '\t+ %s %s\n' % (day, month)
+                bot.send_message(chat_id=telegram_chat_id, text=diff_description)
+
+                # send link to register
                 bot.send_message(chat_id=telegram_chat_id, text=URL)
             else:  # no slots found
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
