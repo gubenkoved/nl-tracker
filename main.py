@@ -255,17 +255,17 @@ def check_once():
                 else:
                     bot.send_message(chat_id=telegram_chat_id, text='Available slots changed!')
 
-                # TODO: use send_media_group to group all screenshots
+                media = []
                 for screenshot in result.screenshots:
-                    bot.send_photo(chat_id=telegram_chat_id, photo=screenshot)
-                    # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
+                    media.append(telegram.InputMediaPhoto(screenshot))
+                bot.send_media_group(chat_id=telegram_chat_id, media=media)
                 bot.send_message(chat_id=telegram_chat_id, text=URL)
             else:  # no slots found
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
         else:
             logger.info('State did not change, do not notify')
 
-        save_state(dict(state, available_dates=result.available_dates))
+        save_state(dict(state, available_dates=result.available_dates, timestamp=time.time()))
 
         logger.debug('done')
     except Exception:
