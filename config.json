@@ -1,5 +1,6 @@
 {
   "driver_path": "INSERT VALUE HERE",
   "telegram_chat_id": "INSERT VALUE HERE",
+  "telegram_status_message_id": "OPTIONALLY INSERT VALUE HERE TO MAINTAIN STATUS MESSAGE",
   "telegram_bot_api_token": "INSERT VALUE HERE"
 }

@@ -9,6 +9,7 @@ from typing import List
 
 import coloredlogs
 import telegram
+import pytz
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
@@ -299,6 +300,14 @@ def check_once():
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
         else:
             logger.info('State did not change, do not notify')
+
+        status_message_id = config.get('telegram_status_message_id')
+        if status_message_id:
+            tz = pytz.timezone('Europe/Moscow')
+            now = datetime.now(tz)
+            now_string = now.strftime('%H:%M:%S UTC%z on %b %d')
+            status = '🟢 Last checked at %s (Moscow time)' % now_string
+            bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
         save_state(dict(state, available_dates=result.available_dates, timestamp=time.time()))
 
