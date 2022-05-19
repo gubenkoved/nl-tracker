@@ -57,6 +57,8 @@ def get_firefox_driver(path, headless=True, scale_factor=2.0):
     driver.set_window_position(0, 0)
     driver.set_window_size(1280, 1080)
 
+    driver.set_page_load_timeout(30)
+
     return driver
 
 
@@ -84,8 +86,8 @@ def save_page_source(page_source, stage):
 
 
 class SlotsCheckResults:
-    def __init__(self, found, screenshots):
-        self.found = found
+    def __init__(self, available_dates, screenshots):
+        self.available_dates = available_dates
         self.screenshots = screenshots
 
 
@@ -101,6 +103,15 @@ def find_element_safe(driver, by, value):
         return driver.find_element(by, value)
     except NoSuchElementException:  # spelling error making this code not work as expected
         return None
+
+
+def parse_available_dates(calendar_element):
+    month: str = calendar_element.find_elements(By.TAG_NAME, 'tr')[0].text
+    month = month.replace('>>', '').replace('<<', '').strip()
+    days = []
+    for day_element in calendar_element.find_elements(By.CLASS_NAME, 'OpenDateAllocated'):
+        days.append(int(day_element.text))
+    return month, days
 
 
 def check_available_slots(driver):
@@ -136,7 +147,7 @@ def check_available_slots(driver):
     if NO_DATES_MARKER in message_span.text:
         logger.info('No slots found')
         page_screenshot = driver.get_screenshot_as_png()
-        return SlotsCheckResults(False, screenshot=page_screenshot)
+        return SlotsCheckResults({}, screenshots=[page_screenshot])
 
     logger.info('Looks like there are some slots, getting the calendar')
 
@@ -160,9 +171,14 @@ def check_available_slots(driver):
     page_trace(driver, 'calendar')
 
     calendar_screenshots = []
+    available_dates = {}
 
     while True:
         calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
+
+        month, days = parse_available_dates(calendar_table)
+        available_dates[month] = days
+
         calendar_screenshot = calendar_table.screenshot_as_png
         calendar_screenshots.append(calendar_screenshot)
 
@@ -176,7 +192,7 @@ def check_available_slots(driver):
         if no_slots_element:
             break
 
-    return SlotsCheckResults(True, calendar_screenshots)
+    return SlotsCheckResults(available_dates, calendar_screenshots)
 
 
 def read_config():
@@ -228,11 +244,17 @@ def check_once():
         state = read_state()
         result = check_available_slots(driver)
 
-        if state.get('slots_found', False) != result.found:
+        prev_available_dates = state.get('available_dates', {})
+
+        if prev_available_dates != result.available_dates:
             logger.info('notifying about state change')
 
-            if result.found:
-                bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
+            if result.available_dates:
+                if not prev_available_dates:
+                    bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
+                else:
+                    bot.send_message(chat_id=telegram_chat_id, text='Available slots changed!')
+
                 # TODO: use send_media_group to group all screenshots
                 for screenshot in result.screenshots:
                     bot.send_photo(chat_id=telegram_chat_id, photo=screenshot)
@@ -243,7 +265,7 @@ def check_once():
         else:
             logger.info('State did not change, do not notify')
 
-        save_state(dict(state, slots_found=result.found))
+        save_state(dict(state, available_dates=result.available_dates))
 
         logger.debug('done')
     except Exception:
