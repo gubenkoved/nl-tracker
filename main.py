@@ -282,7 +282,7 @@ def check_once():
                 media = []
                 for screenshot in result.screenshots:
                     media.append(telegram.InputMediaPhoto(screenshot))
-                bot.send_media_group(chat_id=telegram_chat_id, media=media)
+                bot.send_media_group(chat_id=telegram_chat_id, media=media, disable_notification=True)
 
                 # send the diff
                 diff = get_available_slots_diff(prev_available_dates, result.available_dates)
@@ -295,10 +295,10 @@ def check_once():
                         diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
                         diff_description += '🟢 %s %s\n' % (day, month)
-                bot.send_message(chat_id=telegram_chat_id, text=diff_description)
+                bot.send_message(chat_id=telegram_chat_id, text=diff_description, disable_notification=True)
 
                 # send link to register
-                bot.send_message(chat_id=telegram_chat_id, text=URL)
+                bot.send_message(chat_id=telegram_chat_id, text=URL, disable_notification=True)
             else:  # no slots found
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
         else:
