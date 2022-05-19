@@ -335,7 +335,7 @@ if __name__ == '__main__':
     check_parser.set_defaults(command='check')
 
     monitor_parser = subparsers.add_parser('monitor')
-    monitor_parser.add_argument('--period-seconds', type=int, default=300, required=False)
+    monitor_parser.add_argument('--period-seconds', type=int, default=600, required=False)
     monitor_parser.set_defaults(command='monitor')
 
     args = parser.parse_args()
