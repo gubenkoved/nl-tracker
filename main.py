@@ -308,7 +308,7 @@ def check_once():
         if status_message_id:
             tz = pytz.timezone('Europe/Moscow')
             now = datetime.now(tz)
-            now_string = now.strftime('%H:%M:%S UTC%z on %b %d')
+            now_string = now.strftime('%H:%M on %b %d')
             status = '⚡ Last checked at %s (Moscow time)' % now_string
             bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
