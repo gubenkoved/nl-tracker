@@ -11,6 +11,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.firefox.service import Service as FFService
+from selenium.common.exceptions import NoSuchElementException
+
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -82,9 +84,9 @@ def save_page_source(page_source, stage):
 
 
 class SlotsCheckResults:
-    def __init__(self, found, screenshot):
+    def __init__(self, found, screenshots):
         self.found = found
-        self.screenshot = screenshot
+        self.screenshots = screenshots
 
 
 def page_trace(driver, checkpoint, screenshot=True):
@@ -92,6 +94,13 @@ def page_trace(driver, checkpoint, screenshot=True):
 
     if screenshot:
         driver.save_screenshot(get_screenshot_path(checkpoint))
+
+
+def find_element_safe(driver, by, value):
+    try:
+        return driver.find_element(by, value)
+    except NoSuchElementException:  # spelling error making this code not work as expected
+        return None
 
 
 def check_available_slots(driver):
@@ -150,10 +159,24 @@ def check_available_slots(driver):
 
     page_trace(driver, 'calendar')
 
-    calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
-    calendar_screenshot = calendar_table.screenshot_as_png
+    calendar_screenshots = []
 
-    return SlotsCheckResults(True, calendar_screenshot)
+    while True:
+        calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
+        calendar_screenshot = calendar_table.screenshot_as_png
+        calendar_screenshots.append(calendar_screenshot)
+
+        next_month_link = driver.find_element(By.LINK_TEXT, '>>')
+        next_month_link.click()
+
+        end_of_slots_marker = 'No date(s) available for current month'
+        no_slots_element = find_element_safe(
+            driver, By.XPATH, '//*[contains(text(), "%s")]' % end_of_slots_marker)
+
+        if no_slots_element:
+            break
+
+    return SlotsCheckResults(True, calendar_screenshots)
 
 
 def read_config():
@@ -210,12 +233,15 @@ def check_once():
 
             if result.found:
                 bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
-                if result.screenshot:
-                    bot.send_photo(chat_id=telegram_chat_id, photo=result.screenshot)
+                # TODO: use send_media_group to group all screenshots
+                for screenshot in result.screenshots:
+                    bot.send_photo(chat_id=telegram_chat_id, photo=screenshot)
                     # bot.send_document(chat_id=telegram_chat_id, filename='calendar.png', document=result.screenshot)
                 bot.send_message(chat_id=telegram_chat_id, text=URL)
             else:  # no slots found
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
+        else:
+            logger.info('State did not change, do not notify')
 
         save_state(dict(state, slots_found=result.found))
 
