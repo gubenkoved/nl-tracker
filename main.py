@@ -9,6 +9,7 @@ from typing import List
 
 import coloredlogs
 import telegram
+import telegram.ext
 import pytz
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -260,7 +261,9 @@ def check_once():
         telegram_chat_id = require_config_key(config, 'telegram_chat_id')
         telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
 
-        bot = telegram.Bot(telegram_bot_token)
+        bot = telegram.ext.ExtBot(telegram_bot_token, defaults=telegram.ext.Defaults(
+            timeout=10,
+        ))
 
         state = read_state()
         result = check_available_slots(driver)
@@ -289,9 +292,9 @@ def check_once():
                 diff_description = ''
                 for month in diff:
                     for day in diff[month].get('removed', []):
-                        diff_description += '\t- %s %s\n' % (day, month)
+                        diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
-                        diff_description += '\t+ %s %s\n' % (day, month)
+                        diff_description += '🟢 %s %s\n' % (day, month)
                 bot.send_message(chat_id=telegram_chat_id, text=diff_description)
 
                 # send link to register
@@ -306,7 +309,7 @@ def check_once():
             tz = pytz.timezone('Europe/Moscow')
             now = datetime.now(tz)
             now_string = now.strftime('%H:%M:%S UTC%z on %b %d')
-            status = '🟢 Last checked at %s (Moscow time)' % now_string
+            status = '⚡ Last checked at %s (Moscow time)' % now_string
             bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
         save_state(dict(state, available_dates=result.available_dates, timestamp=time.time()))
@@ -344,7 +347,7 @@ if __name__ == '__main__':
     check_parser.set_defaults(command='check')
 
     monitor_parser = subparsers.add_parser('monitor')
-    monitor_parser.add_argument('--period-seconds', type=int, default=600, required=False)
+    monitor_parser.add_argument('--period-seconds', type=int, default=15*60, required=False)
     monitor_parser.set_defaults(command='monitor')
 
     args = parser.parse_args()
