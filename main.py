@@ -275,30 +275,30 @@ def check_once():
 
             if result.available_dates:
                 if not prev_available_dates:
-                    bot.send_message(chat_id=telegram_chat_id, text='Found available slots!')
+                    notification_text = 'Found available slots!'
                 else:
-                    bot.send_message(chat_id=telegram_chat_id, text='Available slots changed!')
+                    notification_text = 'Available slots changed!'
 
                 media = []
                 for screenshot in result.screenshots:
                     media.append(telegram.InputMediaPhoto(screenshot))
-                bot.send_media_group(chat_id=telegram_chat_id, media=media, disable_notification=True)
 
-                # send the diff
+                # add the diff
                 diff = get_available_slots_diff(prev_available_dates, result.available_dates)
-
-                logger.debug('slots diff: %s', diff)
-
                 diff_description = ''
                 for month in diff:
                     for day in diff[month].get('removed', []):
                         diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
                         diff_description += '🟢 %s %s\n' % (day, month)
-                bot.send_message(chat_id=telegram_chat_id, text=diff_description, disable_notification=True)
 
-                # send link to register
-                bot.send_message(chat_id=telegram_chat_id, text=URL, disable_notification=True)
+                notification_text += '\n\n' + diff_description
+                notification_text += '\n' + URL
+
+                # attach text to the first screenshot to be displayed
+                media[0].caption = notification_text
+
+                bot.send_media_group(chat_id=telegram_chat_id, media=media)
             else:  # no slots found
                 bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
         else:
