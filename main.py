@@ -62,6 +62,7 @@ def get_firefox_driver(path, headless=True, scale_factor=2.0):
     driver.set_window_size(1280, 1080)
 
     driver.set_page_load_timeout(30)
+    driver.implicitly_wait(10)
 
     return driver
 
