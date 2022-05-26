@@ -135,6 +135,11 @@ def get_available_slots_diff(baseline: collections.OrderedDict, current: collect
     return diff
 
 
+def is_no_dates_available_marker_present(driver):
+    message_span = find_element_safe(driver, By.ID, 'plhMain_lblMsg')
+    return message_span and NO_DATES_MARKER in message_span.text
+
+
 def check_available_slots(driver):
     driver.get(URL)
 
@@ -163,14 +168,12 @@ def check_available_slots(driver):
 
     page_trace(driver, 'before-calendar')
 
-    message_span = driver.find_element(By.ID, 'plhMain_lblMsg')
-
-    if NO_DATES_MARKER in message_span.text:
+    if is_no_dates_available_marker_present(driver):
         logger.info('No slots found')
         page_screenshot = driver.get_screenshot_as_png()
         return SlotsCheckResults(collections.OrderedDict(), screenshots=[page_screenshot])
 
-    logger.info('Looks like there are some slots, getting the calendar')
+    logger.debug('Looks like there are some slots, getting the calendar')
 
     # slots seem to be found, get the calendar
     given_name_textbox = driver.find_element(By.ID, 'plhMain_repAppVisaDetails_tbxFName_0')
@@ -190,6 +193,12 @@ def check_available_slots(driver):
     submit_btn.click()
 
     page_trace(driver, 'calendar')
+
+    # no dates marker can be present on later stage too
+    if is_no_dates_available_marker_present(driver):
+        logger.info('No slots found')
+        page_screenshot = driver.get_screenshot_as_png()
+        return SlotsCheckResults(collections.OrderedDict(), screenshots=[page_screenshot])
 
     calendar_screenshots = []
     available_dates = collections.OrderedDict()
@@ -212,6 +221,8 @@ def check_available_slots(driver):
 
         if no_slots_element:
             break
+
+        page_trace(driver, 'calendar')
 
     logger.debug('available dates: %s', available_dates)
 
@@ -276,9 +287,9 @@ def check_once():
 
             if result.available_dates:
                 if not prev_available_dates:
-                    notification_text = 'Found available slots!'
+                    notification_text = '🔥 Found available slots!'
                 else:
-                    notification_text = 'Available slots changed!'
+                    notification_text = '⚡ Available slots changed!'
 
                 media = []
                 for screenshot in result.screenshots:
@@ -301,9 +312,9 @@ def check_once():
 
                 bot.send_media_group(chat_id=telegram_chat_id, media=media)
             else:  # no slots found
-                bot.send_message(chat_id=telegram_chat_id, text='No more slots available...')
+                bot.send_message(chat_id=telegram_chat_id, text='💀 No more slots available...')
         else:
-            logger.info('State did not change, do not notify')
+            logger.debug('State did not change, do not notify')
 
         status_message_id = config.get('telegram_status_message_id')
         if status_message_id:
