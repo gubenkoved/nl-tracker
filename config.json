@@ -1,4 +1,5 @@
 {
+  "driver_type": "EITHER \"firefox\" (DEFAULT) OR \"chrome\"",
   "driver_path": "INSERT VALUE HERE",
   "telegram_chat_id": "INSERT VALUE HERE",
   "telegram_status_message_id": "OPTIONALLY INSERT VALUE HERE TO MAINTAIN STATUS MESSAGE",

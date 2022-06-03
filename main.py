@@ -67,6 +67,15 @@ def get_firefox_driver(path, headless=True, scale_factor=2.0):
     return driver
 
 
+def get_driver_loader(driver_type):
+    if driver_type == 'firefox':
+        return get_firefox_driver
+    elif driver_type == 'chrome':
+        return get_chrome_driver
+    else:
+        raise RuntimeError('Unknown driver type: %s' % driver_type)
+
+
 def ensure_dir(path):
     dir_path = os.path.dirname(path)
     os.makedirs(dir_path, exist_ok=True)
@@ -268,7 +277,8 @@ def check_once():
 
         driver_path = require_config_key(config, 'driver_path')
 
-        driver = get_firefox_driver(driver_path)
+        driver_loader_fn = get_driver_loader(config.get('driver_type', 'firefox').lower())
+        driver = driver_loader_fn(driver_path)
 
         telegram_chat_id = require_config_key(config, 'telegram_chat_id')
         telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
