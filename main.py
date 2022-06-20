@@ -322,7 +322,7 @@ def check_once():
 
                 bot.send_media_group(chat_id=telegram_chat_id, media=media)
             else:  # no slots found
-                bot.send_message(chat_id=telegram_chat_id, text='💀 No more slots available...')
+                bot.send_message(chat_id=telegram_chat_id, text='🙅 No more slots available...')
         else:
             logger.debug('State did not change, do not notify')
 
