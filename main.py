@@ -134,12 +134,12 @@ def get_available_slots_diff(baseline: collections.OrderedDict, current: collect
     for month in baseline:
         removed_dates = set(baseline[month]) - set(current.get(month, []))
         if removed_dates:
-            diff.setdefault(month, {})['removed'] = removed_dates
+            diff.setdefault(month, {})['removed'] = sorted(removed_dates)
 
     for month in current:
         added_dates = set(current[month]) - set(baseline.get(month, []))
         if added_dates:
-            diff.setdefault(month, {})['added'] = added_dates
+            diff.setdefault(month, {})['added'] = sorted(added_dates)
 
     return diff
 
