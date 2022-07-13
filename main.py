@@ -18,13 +18,23 @@ from selenium.webdriver.firefox.service import Service as FFService
 from selenium.common.exceptions import NoSuchElementException
 
 
-URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
-CITY = 'Moscow'
-VISA_CATEGORY = 'MVV – visa for long stay (>90 days)'
-NO_DATES_MARKER = 'No date(s) available for appointment'
+def read_config():
+    path = 'config.json'
+    # to simplify development
+    if os.path.exists('local.config.json'):
+        path = 'local.config.json'
+    with open(path, 'r') as f:
+        return json.loads(f.read())
 
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
-             '(KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36'
+
+CONFIG = read_config()
+URL = CONFIG.get('url', '')
+CITY = CONFIG.get('city', ' ')
+VISA_CATEGORY = CONFIG.get('visa', 'MVV – visa for long stay (>90 days)')
+NO_DATES_MARKER = CONFIG.get('empty_marker', 'No date(s) available for appointment')
+
+USER_AGENT = CONFIG.get('user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
+                            '(KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36')
 
 
 logger = logging.getLogger(__name__)
@@ -159,14 +169,15 @@ def check_available_slots(driver):
 
     page_trace(driver, 'schedule-clicked')
 
-    city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
-    city_picker_select = Select(city_picker)
-    city_picker_select.select_by_visible_text(CITY)
+    if CITY != ' ':
+        city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
+        city_picker_select = Select(city_picker)
+        city_picker_select.select_by_visible_text(CITY)
 
-    city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
-    city_submit_btn.click()
+        city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
+        city_submit_btn.click()
 
-    page_trace(driver, 'city-submitted')
+        page_trace(driver, 'city-submitted')
 
     category_picker = driver.find_element(By.ID, 'plhMain_cboVisaCategory')
     category_picker_select = Select(category_picker)
@@ -238,14 +249,6 @@ def check_available_slots(driver):
     return SlotsCheckResults(available_dates, calendar_screenshots)
 
 
-def read_config():
-    path = 'config.json'
-    # to simplify development
-    if os.path.exists('local.config.json'):
-        path = 'local.config.json'
-    with open(path, 'r') as f:
-        return json.loads(f.read())
-
 
 def read_state():
     path = 'state.json'
@@ -272,16 +275,15 @@ def check_once():
     driver = None
 
     try:
-        config = read_config()
-        logger.debug('config: %s', config)
+        logger.debug('config: %s', CONFIG)
 
-        driver_path = require_config_key(config, 'driver_path')
+        driver_path = require_config_key(CONFIG, 'driver_path')
 
-        driver_loader_fn = get_driver_loader(config.get('driver_type', 'firefox').lower())
+        driver_loader_fn = get_driver_loader(CONFIG.get('driver_type', 'firefox').lower())
         driver = driver_loader_fn(driver_path)
 
-        telegram_chat_id = require_config_key(config, 'telegram_chat_id')
-        telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
+        telegram_chat_id = require_config_key(CONFIG, 'telegram_chat_id')
+        telegram_bot_token = require_config_key(CONFIG, 'telegram_bot_api_token')
 
         bot = telegram.ext.ExtBot(telegram_bot_token, defaults=telegram.ext.Defaults(
             timeout=10,
@@ -326,7 +328,7 @@ def check_once():
         else:
             logger.debug('State did not change, do not notify')
 
-        status_message_id = config.get('telegram_status_message_id')
+        status_message_id = CONFIG.get('telegram_status_message_id')
         if status_message_id:
             tz = pytz.timezone('Europe/Moscow')
             now = datetime.now(tz)
