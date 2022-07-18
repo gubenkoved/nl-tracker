@@ -1,22 +1,22 @@
 import argparse
 import collections
+import itertools
 import json
 import logging
 import os.path
 import time
 from datetime import datetime
-from typing import List
+from typing import List, OrderedDict
 
 import coloredlogs
+import pytz
 import telegram
 import telegram.ext
-import pytz
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.firefox.service import Service as FFService
 from selenium.common.exceptions import NoSuchElementException
-
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.service import Service as FFService
+from selenium.webdriver.support.ui import Select
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -99,9 +99,36 @@ def save_page_source(page_source, stage):
         f.write(page_source)
 
 
+# time is represented by string HHMM (4 characters)
+class AvailableSlot:
+    def __init__(self, month: str, day: int, time: str):
+        self.month = month
+        self.day = day
+        self.time = time
+
+    def __eq__(self, other):
+        return (self.month == other.month and
+                self.day == other.day and
+                self.time == other.time)
+
+    def __repr__(self):
+        return f'<{self.month} on {self.day} at {self.time}>'
+
+    def to_dict(self):
+        return {
+            'month': self.month,
+            'day': self.day,
+            'time': self.time,
+        }
+
+    @staticmethod
+    def from_dict(data):
+        return AvailableSlot(data['month'], data['day'], data['time'])
+
+
 class SlotsCheckResults:
-    def __init__(self, available_dates: collections.OrderedDict, screenshots: List[bytes]):
-        self.available_dates = available_dates
+    def __init__(self, slots: List[AvailableSlot], screenshots: List[bytes]):
+        self.slots = slots
         self.screenshots = screenshots
 
 
@@ -119,13 +146,48 @@ def find_element_safe(driver, by, value):
         return None
 
 
-def parse_available_dates(calendar_element):
+def parse_available_times_in_day(driver) -> List[str]:
+    slots_table = driver.find_element(By.ID, 'plhMain_gvSlot')
+    times = []
+    for row in slots_table.find_elements(By.TAG_NAME, 'tr')[1:]:
+        times.append(row.text)
+    return times
+
+
+def parse_available_dates(driver) -> List[AvailableSlot]:
+    calendar_element = driver.find_element(By.ID, 'plhMain_cldAppointment')
     month: str = calendar_element.find_elements(By.TAG_NAME, 'tr')[0].text
     month = month.replace('>>', '').replace('<<', '').strip()
-    days = []
-    for day_element in calendar_element.find_elements(By.CLASS_NAME, 'OpenDateAllocated'):
-        days.append(int(day_element.text))
-    return month, days
+
+    # day -> slots
+    available_slots = {}
+
+    # when we navigate to another page the reference to the
+    # found element becomes invalid
+    while True:
+        # update element
+        calendar_element = driver.find_element(By.ID, 'plhMain_cldAppointment')
+        day_elements = calendar_element.find_elements(By.CLASS_NAME, 'OpenDateAllocated')
+
+        # try to find not yet parsed day
+        day_element = next((el for el in day_elements if int(el.text) not in available_slots), None)
+
+        if day_element is None:
+            break  # parsed all
+
+        day = int(day_element.text)
+
+        day_link = day_element.find_element(By.TAG_NAME, 'a')
+        day_link.click()
+
+        times = parse_available_times_in_day(driver)
+
+        back_link = driver.find_element(By.ID, 'plhMain_btnBack')
+        back_link.click()
+
+        available_slots[day] = [AvailableSlot(month, day, time) for time in times]
+
+    return list(itertools.chain(*available_slots.values()))
 
 
 def get_available_slots_diff(baseline: collections.OrderedDict, current: collections.OrderedDict):
@@ -180,7 +242,7 @@ def check_available_slots(driver):
     if is_no_dates_available_marker_present(driver):
         logger.info('No slots found')
         page_screenshot = driver.get_screenshot_as_png()
-        return SlotsCheckResults(collections.OrderedDict(), screenshots=[page_screenshot])
+        return SlotsCheckResults([], screenshots=[page_screenshot])
 
     logger.debug('Looks like there are some slots, getting the calendar')
 
@@ -207,19 +269,19 @@ def check_available_slots(driver):
     if is_no_dates_available_marker_present(driver):
         logger.info('No slots found')
         page_screenshot = driver.get_screenshot_as_png()
-        return SlotsCheckResults(collections.OrderedDict(), screenshots=[page_screenshot])
+        return SlotsCheckResults([], screenshots=[page_screenshot])
 
     calendar_screenshots = []
-    available_dates = collections.OrderedDict()
+    available_slots = []
 
     while True:
         calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
 
-        month, days = parse_available_dates(calendar_table)
-        available_dates[month] = days
-
         calendar_screenshot = calendar_table.screenshot_as_png
         calendar_screenshots.append(calendar_screenshot)
+
+        month_slots = parse_available_dates(driver)
+        available_slots.extend(month_slots)
 
         next_month_link = driver.find_element(By.LINK_TEXT, '>>')
         next_month_link.click()
@@ -233,9 +295,9 @@ def check_available_slots(driver):
 
         page_trace(driver, 'calendar')
 
-    logger.debug('available dates: %s', available_dates)
+    logger.debug('available dates: %s', available_slots)
 
-    return SlotsCheckResults(available_dates, calendar_screenshots)
+    return SlotsCheckResults(available_slots, calendar_screenshots)
 
 
 def read_config():
@@ -290,29 +352,46 @@ def check_once():
         state = read_state()
         result = check_available_slots(driver)
 
-        prev_available_dates = state.get('available_dates', {})
+        def get_available_dates(slots: List[AvailableSlot]) -> OrderedDict[str, List[int]]:
+            result = collections.defaultdict(set)  # month -> days
+            for slot in slots:
+                result[slot.month].add(slot.day)
+            return collections.OrderedDict(
+                sorted([(k, sorted(v)) for k, v in result.items()], key=lambda x: x[0]))
 
-        if prev_available_dates != result.available_dates:
+        available_dates = get_available_dates(result.slots)
+        prev_available_slots = [
+            AvailableSlot.from_dict(x)
+            for x in state.get('available_slots', [])
+        ]
+        prev_available_dates = get_available_dates(prev_available_slots)
+
+        if prev_available_dates != available_dates:
             logger.info('notifying about state change')
 
-            if result.available_dates:
+            if available_dates:
                 if not prev_available_dates:
-                    notification_text = '🔥 Found available slots!'
+                    notification_text = '🔥 Found available days!'
                 else:
-                    notification_text = '⚡ Available slots changed!'
+                    notification_text = '⚡ Available days changed!'
 
                 media = []
                 for screenshot in result.screenshots:
                     media.append(telegram.InputMediaPhoto(screenshot))
 
                 # add the diff
-                diff = get_available_slots_diff(prev_available_dates, result.available_dates)
+                diff = get_available_slots_diff(prev_available_dates, available_dates)
                 diff_description = ''
                 for month in diff:
                     for day in diff[month].get('removed', []):
                         diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
-                        diff_description += '🟢 %s %s\n' % (day, month)
+                        available_times = [
+                            slot.time[:2] + ':' + slot.time[2:]
+                            for slot in result.slots if slot.month == month and slot.day == day
+                        ]
+                        assert len(available_times) > 0
+                        diff_description += '🟢 %s %s (%s)\n' % (day, month, ', '.join(available_times))
 
                 notification_text += '\n\n' + diff_description
                 notification_text += '\n' + URL
@@ -334,7 +413,11 @@ def check_once():
             status = '⚡ Last checked at %s (Moscow time)' % now_string
             bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
-        save_state(dict(state, available_dates=result.available_dates, timestamp=time.time()))
+        save_state(dict(
+            state,
+            available_slots=[slot.to_dict() for slot in result.slots],
+            timestamp=time.time()
+        ))
 
         logger.debug('done')
     except Exception:
