@@ -6,13 +6,14 @@ import logging
 import os.path
 import time
 from datetime import datetime
-from typing import List, OrderedDict
+from typing import List, OrderedDict, Dict, Any, Callable
 
 import coloredlogs
 import pytz
 import telegram
 import telegram.ext
 from selenium import webdriver
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service as FFService
@@ -30,7 +31,7 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 logger = logging.getLogger(__name__)
 
 
-def get_chrome_driver(path, headless=True, scale_factor=2.0):
+def get_chrome_driver(path, headless=True, scale_factor=2.0) -> webdriver.Chrome:
     path = os.path.abspath(path)
 
     options = webdriver.ChromeOptions()
@@ -47,7 +48,7 @@ def get_chrome_driver(path, headless=True, scale_factor=2.0):
     return webdriver.Chrome(path, options=options)
 
 
-def get_firefox_driver(path, headless=True, scale_factor=2.0):
+def get_firefox_driver(path: str, headless=True, scale_factor=2.0) -> webdriver.Firefox:
     path = os.path.abspath(path)
 
     options = webdriver.FirefoxOptions()
@@ -67,32 +68,32 @@ def get_firefox_driver(path, headless=True, scale_factor=2.0):
     return driver
 
 
-def get_driver_loader(driver_type):
+def get_driver_loader(driver_type: str) -> Callable[[str], WebDriver]:
     if driver_type == 'firefox':
         return get_firefox_driver
     elif driver_type == 'chrome':
         return get_chrome_driver
     else:
-        raise RuntimeError('Unknown driver type: %s' % driver_type)
+        raise ValueError('Unknown driver type: %s' % driver_type)
 
 
-def ensure_dir(path):
+def ensure_dir(path: str) -> None:
     dir_path = os.path.dirname(path)
     os.makedirs(dir_path, exist_ok=True)
 
 
-def get_time_prefix():
+def get_time_prefix() -> str:
     now = datetime.now()
     return now.strftime('%Y-%m-%d %H-%M-%S-%f')
 
 
-def get_screenshot_path(name='default'):
+def get_screenshot_path(name='default') -> str:
     path = f'./artifacts/screenshots/{get_time_prefix()}-{name}.png'
     ensure_dir(path)
     return path
 
 
-def save_page_source(page_source, stage):
+def save_page_source(page_source, stage) -> None:
     path = f'./artifacts/pages/{get_time_prefix()}-{stage}.html'
     ensure_dir(path)
     with open(path, 'w') as f:
@@ -105,6 +106,10 @@ class AvailableSlot:
         self.month = month
         self.day = day
         self.time = time
+
+    @property
+    def formatted_time(self):
+        return self.time[:2] + ':' + self.time[2:]
 
     def __eq__(self, other):
         return (self.month == other.month and
@@ -132,21 +137,21 @@ class SlotsCheckResults:
         self.screenshots = screenshots
 
 
-def page_trace(driver, checkpoint, screenshot=True):
+def page_trace(driver: WebDriver, checkpoint: str, screenshot=True) -> None:
     save_page_source(driver.page_source, checkpoint)
 
     if screenshot:
         driver.save_screenshot(get_screenshot_path(checkpoint))
 
 
-def find_element_safe(driver, by, value):
+def find_element_safe(driver: WebDriver, by, value):
     try:
         return driver.find_element(by, value)
     except NoSuchElementException:  # spelling error making this code not work as expected
         return None
 
 
-def parse_available_times_in_day(driver) -> List[str]:
+def parse_available_times_in_day(driver: WebDriver) -> List[str]:
     slots_table = driver.find_element(By.ID, 'plhMain_gvSlot')
     times = []
     for row in slots_table.find_elements(By.TAG_NAME, 'tr')[1:]:
@@ -154,7 +159,7 @@ def parse_available_times_in_day(driver) -> List[str]:
     return times
 
 
-def parse_available_dates(driver) -> List[AvailableSlot]:
+def parse_available_dates(driver: WebDriver) -> List[AvailableSlot]:
     calendar_element = driver.find_element(By.ID, 'plhMain_cldAppointment')
     month: str = calendar_element.find_elements(By.TAG_NAME, 'tr')[0].text
     month = month.replace('>>', '').replace('<<', '').strip()
@@ -206,12 +211,12 @@ def get_available_slots_diff(baseline: collections.OrderedDict, current: collect
     return diff
 
 
-def is_no_dates_available_marker_present(driver):
+def is_no_dates_available_marker_present(driver: WebDriver):
     message_span = find_element_safe(driver, By.ID, 'plhMain_lblMsg')
     return message_span and NO_DATES_MARKER in message_span.text
 
 
-def check_available_slots(driver):
+def check_available_slots(driver: WebDriver):
     driver.get(URL)
 
     page_trace(driver, 'loaded')
@@ -300,7 +305,7 @@ def check_available_slots(driver):
     return SlotsCheckResults(available_slots, calendar_screenshots)
 
 
-def read_config():
+def read_config() -> Dict[str, Any]:
     path = 'config.json'
     # to simplify development
     if os.path.exists('local.config.json'):
@@ -309,13 +314,13 @@ def read_config():
         return json.loads(f.read())
 
 
-def require_config_key(config, config_key):
+def require_config_key(config: Dict[str, Any], config_key: str) -> Any:
     if config_key not in config:
         raise RuntimeError('"%s" config key expected')
     return config[config_key]
 
 
-def read_state():
+def read_state() -> Dict[str, Any]:
     path = 'state.json'
     if not os.path.exists(path):
         return {}
@@ -323,12 +328,12 @@ def read_state():
         return json.loads(f.read())
 
 
-def save_state(state):
+def save_state(state: Dict[str, Any]):
     with open('state.json', 'w') as f:
         f.write(json.dumps(state))
 
 
-def check_once():
+def check_once() -> None:
     logger.debug('starting')
 
     driver = None
@@ -387,7 +392,7 @@ def check_once():
                         diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
                         available_times = [
-                            slot.time[:2] + ':' + slot.time[2:]
+                            slot.formatted_time
                             for slot in result.slots if slot.month == month and slot.day == day
                         ]
                         assert len(available_times) > 0
@@ -424,15 +429,14 @@ def check_once():
         if driver:
             driver.save_screenshot(get_screenshot_path('error'))
         logger.exception('An error occurred')
-        # reraise exception
-        raise
+        raise  # reraise exception
     finally:
         logger.debug('closing driver')
         if driver:
             driver.close()
 
 
-def monitor(period_seconds):
+def monitor(period_seconds: int) -> None:
     while True:
         try:
             check_once()
