@@ -309,6 +309,12 @@ def read_config():
         return json.loads(f.read())
 
 
+def require_config_key(config, config_key):
+    if config_key not in config:
+        raise RuntimeError('"%s" config key expected')
+    return config[config_key]
+
+
 def read_state():
     path = 'state.json'
     if not os.path.exists(path):
@@ -320,12 +326,6 @@ def read_state():
 def save_state(state):
     with open('state.json', 'w') as f:
         f.write(json.dumps(state))
-
-
-def require_config_key(config, config_key):
-    if config_key not in config:
-        raise RuntimeError('"%s" config key expected')
-    return config[config_key]
 
 
 def check_once():
@@ -424,6 +424,8 @@ def check_once():
         if driver:
             driver.save_screenshot(get_screenshot_path('error'))
         logger.exception('An error occurred')
+        # reraise exception
+        raise
     finally:
         logger.debug('closing driver')
         if driver:
@@ -432,7 +434,11 @@ def check_once():
 
 def monitor(period_seconds):
     while True:
-        check_once()
+        try:
+            check_once()
+        except Exception:
+            # swallow exceptions, they are logged anyway already
+            pass
         time.sleep(period_seconds)
 
 
