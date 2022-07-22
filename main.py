@@ -424,7 +424,7 @@ def check_once() -> None:
             timestamp=time.time()
         ))
 
-        logger.debug('done')
+        logger.info('check completed')
     except Exception:
         if driver:
             driver.save_screenshot(get_screenshot_path('error'))
