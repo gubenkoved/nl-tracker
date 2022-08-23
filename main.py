@@ -4,20 +4,27 @@ import itertools
 import json
 import logging
 import os.path
+import pickle
 import time
 from datetime import datetime
-from typing import List, OrderedDict, Dict, Any, Callable
+from typing import List, OrderedDict, Dict, Any
+
+from proxy_host import ProxyHost
 
 import coloredlogs
 import pytz
 import telegram
 import telegram.ext
 from selenium import webdriver
-from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.proxy import Proxy, ProxyType
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.firefox.service import Service as FFService
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
+
+import captcha.solver
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -31,7 +38,7 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 logger = logging.getLogger(__name__)
 
 
-def get_chrome_driver(path, headless=True, scale_factor=2.0) -> webdriver.Chrome:
+def get_chrome_driver(path, headless=False, scale_factor=2.0, proxy: Proxy = None) -> webdriver.Chrome:
     path = os.path.abspath(path)
 
     options = webdriver.ChromeOptions()
@@ -41,23 +48,49 @@ def get_chrome_driver(path, headless=True, scale_factor=2.0) -> webdriver.Chrome
     options.add_argument(f'force-device-scale-factor={scale_factor}')
     options.add_argument('--log-level=3')  # disable logs
 
+    # avoid detection (does not work)
+    options.add_argument('--disable-blink-features')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+
     if headless:
         options.add_argument('--headless')
         options.add_argument('--disable-gpu')
 
-    return webdriver.Chrome(path, options=options)
+    options.proxy = proxy
+
+    driver = webdriver.Chrome(path, options=options)
+
+    # driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+    return driver
 
 
-def get_firefox_driver(path: str, headless=True, scale_factor=2.0) -> webdriver.Firefox:
+def get_firefox_driver(
+        path: str,
+        headless: bool = True,
+        scale_factor: float = 2.0,
+        proxy: Proxy = None) -> webdriver.Firefox:
     path = os.path.abspath(path)
 
     options = webdriver.FirefoxOptions()
     options.headless = headless
     options.set_preference('layout.css.devPixelsPerPx''', str(scale_factor))
+    options.accept_insecure_certs = True
+    options.proxy = proxy
+
+    # avoid self-identification
+    options.set_preference("dom.webdriver.enabled", False)
+    options.set_preference('useAutomationExtension', False)
 
     service = FFService(path)
 
-    driver = webdriver.Firefox(service=service, options=options)
+    driver = webdriver.Firefox(
+        service=service,
+        options=options,
+        desired_capabilities=DesiredCapabilities.FIREFOX
+    )
 
     driver.set_window_position(0, 0)
     driver.set_window_size(1280, 1080)
@@ -68,7 +101,8 @@ def get_firefox_driver(path: str, headless=True, scale_factor=2.0) -> webdriver.
     return driver
 
 
-def get_driver_loader(driver_type: str) -> Callable[[str], WebDriver]:
+# TODO: what is the right type annotation there? create DriverConfig class?
+def get_driver_loader(driver_type: str):
     if driver_type == 'firefox':
         return get_firefox_driver
     elif driver_type == 'chrome':
@@ -216,10 +250,35 @@ def is_no_dates_available_marker_present(driver: WebDriver):
     return message_span and NO_DATES_MARKER in message_span.text
 
 
+def is_captcha_screen_present(driver: WebDriver):
+    captcha_marker = find_element_safe(
+        driver, By.XPATH, '//h2[contains(text(), "%s")]' %
+                          'Checking if the site connection is secure')
+    return captcha_marker is not None
+
+
 def check_available_slots(driver: WebDriver):
     driver.get(URL)
 
     page_trace(driver, 'loaded')
+
+    if is_captcha_screen_present(driver):
+        config = read_config()
+        anticaptcha_api_key = config.get('anticaptcha_api_key')
+        if anticaptcha_api_key:
+            captcha.solver.solve_captcha(driver, anticaptcha_api_key)
+        else:
+            # pause to solve manually
+            logger.warning('Detected captcha screen, adding 1 minute wait time. '
+                           'Manually solve the captcha (disable headless mode '
+                           'if required), then the cookies will be saved for the next '
+                           'session')
+            captcha_time = 60
+            captcha_report_period = 10
+            for captcha_report_round in range(captcha_time // captcha_report_period - 1):
+                leftover = captcha_time - captcha_report_round * captcha_report_period
+                logger.warning('%s seconds left...', leftover)
+                time.sleep(10)
 
     schedule_link = driver.find_element(By.LINK_TEXT, 'Schedule Appointment')
     schedule_link.click()
@@ -306,12 +365,21 @@ def check_available_slots(driver: WebDriver):
 
 
 def read_config() -> Dict[str, Any]:
-    path = 'config.json'
-    # to simplify development
-    if os.path.exists('local.config.json'):
-        path = 'local.config.json'
-    with open(path, 'r') as f:
-        return json.loads(f.read())
+    logger.debug('reading configuration')
+    probe_order = [
+        'dev.config.json',
+        'local.config.json',
+        'config.json'
+    ]
+
+    for path in probe_order:
+        if not os.path.exists(path):
+            continue
+        logger.debug('config path: %s', path)
+        with open(path, 'r') as f:
+            data = json.loads(f.read())
+            logger.debug('config: %s', data)
+            return data
 
 
 def require_config_key(config: Dict[str, Any], config_key: str) -> Any:
@@ -333,19 +401,58 @@ def save_state(state: Dict[str, Any]):
         f.write(json.dumps(state))
 
 
-def check_once() -> None:
+def save_cookies(driver: WebDriver) -> None:
+    cookies = driver.get_cookies()
+    with open('cookies.dat', 'wb+') as f:
+        pickle.dump(cookies, f)
+
+
+def load_cookies(driver: WebDriver) -> None:
+    if not os.path.exists('cookies.dat'):
+        logger.info('cookies file not found')
+        return
+
+    with open('cookies.dat', 'rb') as f:
+        cookies = pickle.load(f)
+        for cookie in cookies:
+            driver.add_cookie(cookie)
+
+
+def check_once(debug: bool = False) -> None:
     logger.debug('starting')
 
     driver = None
+    proxy_host = ProxyHost()
 
     try:
         config = read_config()
-        logger.debug('config: %s', config)
 
         driver_path = require_config_key(config, 'driver_path')
+        driver_type = config.get('driver_type', 'firefox').lower()
+        driver_loader_fn = get_driver_loader(driver_type)
 
-        driver_loader_fn = get_driver_loader(config.get('driver_type', 'firefox').lower())
-        driver = driver_loader_fn(driver_path)
+        proxy_port = 8080
+        proxy_host.start(port=proxy_port)
+
+        proxy_config = Proxy()
+        proxy_config.proxyType = ProxyType.MANUAL
+        proxy_config.httpProxy = 'localhost:%d' % proxy_port
+        proxy_config.sslProxy = 'localhost:%d' % proxy_port
+
+        params = {}
+        if debug and driver_type in ['firefox', 'chrome']:
+            params['headless'] = False
+            # params['scale_factor'] = 1.0
+
+        params['proxy'] = proxy_config
+
+        driver = driver_loader_fn(driver_path, **params)
+
+        logger.info('loading cookies...')
+        # setting cookie requires current context to be matching domain
+        driver.get(URL)
+        load_cookies(driver)
+        logger.info('loaded cookies')
 
         telegram_chat_id = require_config_key(config, 'telegram_chat_id')
         telegram_bot_token = require_config_key(config, 'telegram_bot_api_token')
@@ -425,21 +532,27 @@ def check_once() -> None:
         ))
 
         logger.info('check completed')
+
+        logger.info('saving cookies')
+        save_cookies(driver)
+        logger.info('cookies saved')
     except Exception:
         if driver:
             driver.save_screenshot(get_screenshot_path('error'))
         logger.exception('An error occurred')
         raise  # reraise exception
     finally:
-        logger.debug('closing driver')
+        logger.debug('closing driver...')
         if driver:
             driver.close()
+        logger.debug('stopping proxy...')
+        proxy_host.stop()
 
 
-def monitor(period_seconds: int) -> None:
+def monitor(period_seconds: int, debug: bool = False) -> None:
     while True:
         try:
-            check_once()
+            check_once(debug=debug)
         except Exception:
             # swallow exceptions, they are logged anyway already
             pass
@@ -455,6 +568,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--log-level', type=str, default='INFO', required=False)
+    parser.add_argument('--debug', action='store_true', default=False)
 
     subparsers = parser.add_subparsers()
 
@@ -476,6 +590,11 @@ if __name__ == '__main__':
     logger.info('parsed args: %s', args)
 
     if args.command == 'check':
-        check_once()
+        check_once(
+            debug=args.debug,
+        )
     else:
-        monitor(period_seconds=args.period_seconds)
+        monitor(
+            period_seconds=args.period_seconds,
+            debug=args.debug,
+        )
