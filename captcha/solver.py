@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+import utils
 
 from anticaptchaofficial.hcaptchaproxyless import *
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -15,15 +16,21 @@ def solve_captcha(driver: WebDriver, anticaptcha_api_key: str):
     solver.set_website_url(driver.current_url)
     solver.set_key(anticaptcha_api_key)
 
-    # TODO: make it more reliable! need to wait for iframes to be added
-    time.sleep(5)
+    def find_site_key():
+        captcha_iframe = driver.find_elements(By.TAG_NAME, 'iframe')[0]
+        captcha_iframe_src = captcha_iframe.get_attribute('src')
+        parsed_src = urllib.parse.urlparse(captcha_iframe_src)
+        parsed_qs = urllib.parse.parse_qs(parsed_src.fragment)
+        qs_param = parsed_qs.get('sitekey')
+        if not qs_param:
+            raise Exception('sitekey not found yet')
+        return qs_param[0]
 
-    captcha_iframe = driver.find_elements(By.TAG_NAME, 'iframe')[0]
-    captcha_iframe_src = captcha_iframe.get_attribute('src')
-    parsed_src = urllib.parse.urlparse(captcha_iframe_src)
-    parsed_qs = urllib.parse.parse_qs(parsed_src.fragment)
-    site_key = parsed_qs.get('sitekey')[0]
+    site_key = utils.retry(find_site_key, retry_period_sec=5.0, retry_count=3)
+
     solver.set_website_key(site_key)
+
+    logger.info('retrieved sitekey: %s' % site_key)
 
     logger.info('submit the job for AntiCaptcha and wait for result...')
     solution = solver.solve_and_return_solution()

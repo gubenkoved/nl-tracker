@@ -9,22 +9,23 @@ import time
 from datetime import datetime
 from typing import List, OrderedDict, Dict, Any
 
-from proxy_host import ProxyHost
-
 import coloredlogs
 import pytz
 import telegram
 import telegram.ext
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.firefox.service import Service as FFService
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import Select
 
 import captcha.solver
+import utils
+from model import AvailableSlot, SlotsCheckResults
+from proxy_host import ProxyHost
+
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -38,7 +39,11 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 logger = logging.getLogger(__name__)
 
 
-def get_chrome_driver(path, headless=False, scale_factor=2.0, proxy: Proxy = None) -> webdriver.Chrome:
+def get_chrome_driver(
+        path: str,
+        headless: bool = False,
+        scale_factor: float = 2.0,
+        proxy: Proxy = None) -> webdriver.Chrome:
     path = os.path.abspath(path)
 
     options = webdriver.ChromeOptions()
@@ -58,11 +63,13 @@ def get_chrome_driver(path, headless=False, scale_factor=2.0, proxy: Proxy = Non
         options.add_argument('--headless')
         options.add_argument('--disable-gpu')
 
-    options.proxy = proxy
+    # does not work for Chrome driver
+    # options.proxy = proxy
+    if proxy:
+        options.accept_insecure_certs = True
+        options.add_argument('--proxy-server=http://%s' % proxy.httpProxy)
 
     driver = webdriver.Chrome(path, options=options)
-
-    # driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
     return driver
 
@@ -101,7 +108,6 @@ def get_firefox_driver(
     return driver
 
 
-# TODO: what is the right type annotation there? create DriverConfig class?
 def get_driver_loader(driver_type: str):
     if driver_type == 'firefox':
         return get_firefox_driver
@@ -111,11 +117,6 @@ def get_driver_loader(driver_type: str):
         raise ValueError('Unknown driver type: %s' % driver_type)
 
 
-def ensure_dir(path: str) -> None:
-    dir_path = os.path.dirname(path)
-    os.makedirs(dir_path, exist_ok=True)
-
-
 def get_time_prefix() -> str:
     now = datetime.now()
     return now.strftime('%Y-%m-%d %H-%M-%S-%f')
@@ -123,52 +124,15 @@ def get_time_prefix() -> str:
 
 def get_screenshot_path(name='default') -> str:
     path = f'./artifacts/screenshots/{get_time_prefix()}-{name}.png'
-    ensure_dir(path)
+    utils.ensure_dir(path)
     return path
 
 
 def save_page_source(page_source, stage) -> None:
     path = f'./artifacts/pages/{get_time_prefix()}-{stage}.html'
-    ensure_dir(path)
+    utils.ensure_dir(path)
     with open(path, 'w') as f:
         f.write(page_source)
-
-
-# time is represented by string HHMM (4 characters)
-class AvailableSlot:
-    def __init__(self, month: str, day: int, time: str):
-        self.month = month
-        self.day = day
-        self.time = time
-
-    @property
-    def formatted_time(self):
-        return self.time[:2] + ':' + self.time[2:]
-
-    def __eq__(self, other):
-        return (self.month == other.month and
-                self.day == other.day and
-                self.time == other.time)
-
-    def __repr__(self):
-        return f'<{self.month} on {self.day} at {self.time}>'
-
-    def to_dict(self):
-        return {
-            'month': self.month,
-            'day': self.day,
-            'time': self.time,
-        }
-
-    @staticmethod
-    def from_dict(data):
-        return AvailableSlot(data['month'], data['day'], data['time'])
-
-
-class SlotsCheckResults:
-    def __init__(self, slots: List[AvailableSlot], screenshots: List[bytes]):
-        self.slots = slots
-        self.screenshots = screenshots
 
 
 def page_trace(driver: WebDriver, checkpoint: str, screenshot=True) -> None:
@@ -176,13 +140,6 @@ def page_trace(driver: WebDriver, checkpoint: str, screenshot=True) -> None:
 
     if screenshot:
         driver.save_screenshot(get_screenshot_path(checkpoint))
-
-
-def find_element_safe(driver: WebDriver, by, value):
-    try:
-        return driver.find_element(by, value)
-    except NoSuchElementException:  # spelling error making this code not work as expected
-        return None
 
 
 def parse_available_times_in_day(driver: WebDriver) -> List[str]:
@@ -246,12 +203,12 @@ def get_available_slots_diff(baseline: collections.OrderedDict, current: collect
 
 
 def is_no_dates_available_marker_present(driver: WebDriver):
-    message_span = find_element_safe(driver, By.ID, 'plhMain_lblMsg')
+    message_span = utils.find_element_safe(driver, By.ID, 'plhMain_lblMsg')
     return message_span and NO_DATES_MARKER in message_span.text
 
 
 def is_captcha_screen_present(driver: WebDriver):
-    captcha_marker = find_element_safe(
+    captcha_marker = utils.find_element_safe(
         driver, By.XPATH, '//h2[contains(text(), "%s")]' %
                           'Checking if the site connection is secure')
     return captcha_marker is not None
@@ -351,7 +308,7 @@ def check_available_slots(driver: WebDriver):
         next_month_link.click()
 
         end_of_slots_marker = 'No date(s) available for current month'
-        no_slots_element = find_element_safe(
+        no_slots_element = utils.find_element_safe(
             driver, By.XPATH, '//*[contains(text(), "%s")]' % end_of_slots_marker)
 
         if no_slots_element:
@@ -567,7 +524,7 @@ if __name__ == '__main__':
     coloredlogs.install(level=logging.DEBUG)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log-level', type=str, default='INFO', required=False)
+    parser.add_argument('--log-level', type=str, default=None, required=False)
     parser.add_argument('--debug', action='store_true', default=False)
 
     subparsers = parser.add_subparsers()
@@ -581,7 +538,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    log_level = args.log_level.upper()
+    log_level = args.log_level.upper() if args.log_level else None
+
+    if args.debug and log_level is None:
+        log_level = 'DEBUG'
+
+    log_level = log_level or 'INFO'
 
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
