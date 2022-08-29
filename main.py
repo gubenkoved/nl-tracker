@@ -451,10 +451,12 @@ def check_once(debug: bool = False) -> None:
                 # add the diff
                 diff = get_available_slots_diff(prev_available_dates, available_dates)
                 diff_description = ''
+                added_something = False
                 for month in diff:
                     for day in diff[month].get('removed', []):
                         diff_description += '❌ %s %s\n' % (day, month)
                     for day in diff[month].get('added', []):
+                        added_something = True
                         available_times = [
                             slot.formatted_time
                             for slot in result.slots if slot.month == month and slot.day == day
@@ -468,9 +470,17 @@ def check_once(debug: bool = False) -> None:
                 # attach text to the first screenshot to be displayed
                 media[0].caption = notification_text
 
-                bot.send_media_group(chat_id=telegram_chat_id, media=media)
+                bot.send_media_group(
+                    chat_id=telegram_chat_id,
+                    media=media,
+                    # do not notify unless we detected new slots
+                    disable_notification=not added_something,
+                )
             else:  # no slots found
-                bot.send_message(chat_id=telegram_chat_id, text='🙅 No more slots available...')
+                bot.send_message(
+                    chat_id=telegram_chat_id,
+                    text='🙅 No more slots available...',
+                )
         else:
             logger.debug('State did not change, do not notify')
 
