@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 def get_chrome_driver(
         path: str,
-        headless: bool = False,
+        headless: bool = True,
         scale_factor: float = 2.0,
         proxy: Proxy = None) -> webdriver.Chrome:
     path = os.path.abspath(path)
