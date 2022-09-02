@@ -399,7 +399,7 @@ def check_once(debug: bool = False) -> None:
         params = {}
         if debug and driver_type in ['firefox', 'chrome']:
             params['headless'] = False
-            # params['scale_factor'] = 1.0
+            params['scale_factor'] = 1.0
 
         params['proxy'] = proxy_config
 
