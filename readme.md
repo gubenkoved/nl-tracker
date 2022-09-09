@@ -21,3 +21,23 @@ To work around this we have to use old browser builds. For Firefox it is confirm
 
 Secondly, browser runs via man-in-the-middle proxy (`mitmproxy`) in order to be able to intercept the JS callback which
 site normally calls to pass the captcha token to the server. Otherwise, it's from very hard to impossible to do.
+
+## Browser
+
+### Firefox
+
+Old Firefox (like `78.9.0esr`) is confirmed to work in both headless and regular modes.
+
+### Chrome
+
+Fresh Chrome versions also work with the help of the [undetected-chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver).
+
+Please note however that it only seems to work in regular (not headless) mode.
+
+You can use Virtual Display like [Xvfb](https://en.wikipedia.org/wiki/Xvfb) to work around that.
+
+With Xvfb you can simply run it like:
+
+```bash
+xvfb-run python main.py --headless=False check
+```
