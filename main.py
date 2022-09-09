@@ -381,7 +381,7 @@ def load_cookies(driver: WebDriver) -> None:
             driver.add_cookie(cookie)
 
 
-def check_once(debug: bool = False, headless: bool = None) -> None:
+def check_once(headless: bool = None) -> None:
     logger.debug('starting')
 
     driver = None
@@ -403,9 +403,6 @@ def check_once(debug: bool = False, headless: bool = None) -> None:
         proxy_config.sslProxy = 'localhost:%d' % proxy_port
 
         params = {}
-        if debug and driver_type in ['firefox', 'chrome']:
-            params['headless'] = False
-            params['scale_factor'] = 1.0
 
         if headless is not None:
             params['headless'] = headless
@@ -525,17 +522,17 @@ def check_once(debug: bool = False, headless: bool = None) -> None:
         proxy_host.stop()
 
 
-def monitor(period_seconds: int, debug: bool = False, headless: bool = None) -> None:
+def monitor(period_seconds: int, headless: bool = None) -> None:
     while True:
         try:
-            check_once(debug=debug, headless=headless)
+            check_once(headless=headless)
         except Exception:
             # swallow exceptions, they are logged anyway already
             pass
         time.sleep(period_seconds)
 
 
-def bot_test(debug: bool = False, headless: bool = None) -> None:
+def bot_test(headless: bool = None) -> None:
     config = read_config()
 
     driver_path = require_config_key(config, 'driver_path')
@@ -543,9 +540,6 @@ def bot_test(debug: bool = False, headless: bool = None) -> None:
     driver_loader_fn = get_driver_loader(driver_type)
 
     params = {}
-    if debug and driver_type in ['firefox', 'chrome']:
-        params['headless'] = False
-        params['scale_factor'] = 1.0
 
     if headless is not None:
         params['headless'] = headless
@@ -577,8 +571,6 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--log-level', type=str, default=None, required=False)
-    # TODO: remove obscure "--debug" flag? it intersects with "headless" mode
-    parser.add_argument('--debug', action='store_true', default=False)
     parser.add_argument('--headless', type=str_to_bool, default=True,
                         choices=[False, True])
 
@@ -597,10 +589,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     log_level = args.log_level.upper() if args.log_level else None
-
-    if args.debug and log_level is None:
-        log_level = 'DEBUG'
-
     log_level = log_level or 'INFO'
 
     root_logger = logging.getLogger()
@@ -611,18 +599,15 @@ if __name__ == '__main__':
 
     if args.command == 'check':
         check_once(
-            debug=args.debug,
             headless=args.headless,
         )
     elif args.command == 'monitor':
         monitor(
             period_seconds=args.period_seconds,
-            debug=args.debug,
             headless=args.headless,
         )
     elif args.command == 'bot-test':
         bot_test(
-            debug=args.debug,
             headless=args.headless,
         )
     else:
