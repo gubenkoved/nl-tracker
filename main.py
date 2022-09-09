@@ -13,6 +13,7 @@ import coloredlogs
 import pytz
 import telegram
 import telegram.ext
+import undetected_chromedriver
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
@@ -25,7 +26,6 @@ import captcha.solver
 import utils
 from model import AvailableSlot, SlotsCheckResults
 from proxy_host import ProxyHost
-
 
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
@@ -53,23 +53,28 @@ def get_chrome_driver(
     options.add_argument(f'force-device-scale-factor={scale_factor}')
     options.add_argument('--log-level=3')  # disable logs
 
-    # avoid detection (does not work)
     options.add_argument('--disable-blink-features')
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
+    # options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    # options.add_experimental_option('useAutomationExtension', False)
 
     if headless:
         options.add_argument('--headless')
         options.add_argument('--disable-gpu')
 
-    # does not work for Chrome driver
+    # this does not work for Chrome driver:
     # options.proxy = proxy
     if proxy:
         options.accept_insecure_certs = True
         options.add_argument('--proxy-server=http://%s' % proxy.httpProxy)
 
-    driver = webdriver.Chrome(path, options=options)
+    # driver = webdriver.Chrome(path, options=options)
+    driver = undetected_chromedriver.Chrome(
+        driver_executable_path=path,
+        options=options)
+
+    driver.set_page_load_timeout(30)
+    driver.implicitly_wait(10)
 
     return driver
 
@@ -135,11 +140,12 @@ def save_page_source(page_source, stage) -> None:
         f.write(page_source)
 
 
-def page_trace(driver: WebDriver, checkpoint: str, screenshot=True) -> None:
+def page_trace(driver: WebDriver, checkpoint: str, screenshot:bool = True) -> None:
     save_page_source(driver.page_source, checkpoint)
 
     if screenshot:
-        driver.save_screenshot(get_screenshot_path(checkpoint))
+        path = get_screenshot_path(checkpoint)
+        driver.save_screenshot(path)
 
 
 def parse_available_times_in_day(driver: WebDriver) -> List[str]:
