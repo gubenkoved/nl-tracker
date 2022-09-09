@@ -583,8 +583,8 @@ if __name__ == '__main__':
     monitor_parser.add_argument('--period-seconds', type=int, default=15*60, required=False)
     monitor_parser.set_defaults(command='monitor')
 
-    bot_check_parser = subparsers.add_parser('bot-check')
-    bot_check_parser.set_defaults(command='bot-check')
+    bot_test_parser = subparsers.add_parser('bot-test')
+    bot_test_parser.set_defaults(command='bot-test')
 
     args = parser.parse_args()
 
