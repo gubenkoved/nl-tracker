@@ -405,6 +405,9 @@ def check_once(debug: bool = False) -> None:
 
         driver = driver_loader_fn(driver_path, **params)
 
+        driver.get('https://bot.sannysoft.com/')
+        page_trace(driver, 'bot-test')
+
         logger.info('loading cookies...')
         # setting cookie requires current context to be matching domain
         driver.get(URL)
