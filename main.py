@@ -512,6 +512,11 @@ def check_once(headless: bool = None) -> None:
     except Exception:
         if driver:
             driver.save_screenshot(get_screenshot_path('error'))
+
+            if not is_captcha_screen_present(driver):
+                logger.info('saving cookies even with error occurred, because '
+                            'captcha screen seems to be not present')
+                save_cookies(driver)
         logger.exception('An error occurred')
         raise  # reraise exception
     finally:
