@@ -28,6 +28,9 @@ class ProxyHost:
             stderr=self.log_file
         )
 
+        logger.info('adding a little bit of delay to let proxy start up')
+        time.sleep(5.0)
+
         self.monitor_thread = threading.Thread(target=self._monitor)
         self.monitor_thread.setDaemon(True)
         self.monitor_thread.start()
