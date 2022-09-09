@@ -48,9 +48,9 @@ def get_chrome_driver(
 
     options = webdriver.ChromeOptions()
     options.add_argument(f'--user-agent={USER_AGENT}')
-    options.add_argument('window-size=1024,768')
-    options.add_argument(f'high-dpi-support={scale_factor}')
-    options.add_argument(f'force-device-scale-factor={scale_factor}')
+    options.add_argument('--window-size=1024,768')
+    options.add_argument(f'--high-dpi-support={scale_factor}')
+    options.add_argument(f'--force-device-scale-factor={scale_factor}')
     options.add_argument('--log-level=3')  # disable logs
 
     options.add_argument('--disable-blink-features')
@@ -548,6 +548,10 @@ def bot_test(headless: bool = None) -> None:
 
     driver.get('https://bot.sannysoft.com/')
     page_trace(driver, 'bot-test')
+
+    if headless is False:
+        logger.info('waiting 10 seconds before exit')
+        time.sleep(10)
 
 
 def str_to_bool(s):
