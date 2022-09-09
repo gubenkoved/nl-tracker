@@ -341,7 +341,7 @@ def read_config() -> Dict[str, Any]:
 
 def require_config_key(config: Dict[str, Any], config_key: str) -> Any:
     if config_key not in config:
-        raise RuntimeError('"%s" config key expected')
+        raise RuntimeError('"%s" config key expected' % config_key)
     return config[config_key]
 
 
@@ -404,9 +404,6 @@ def check_once(debug: bool = False) -> None:
         params['proxy'] = proxy_config
 
         driver = driver_loader_fn(driver_path, **params)
-
-        driver.get('https://bot.sannysoft.com/')
-        page_trace(driver, 'bot-test')
 
         logger.info('loading cookies...')
         # setting cookie requires current context to be matching domain
@@ -529,6 +526,24 @@ def monitor(period_seconds: int, debug: bool = False) -> None:
         time.sleep(period_seconds)
 
 
+def bot_check(debug: bool = False) -> None:
+    config = read_config()
+
+    driver_path = require_config_key(config, 'driver_path')
+    driver_type = config.get('driver_type', 'firefox').lower()
+    driver_loader_fn = get_driver_loader(driver_type)
+
+    params = {}
+    if debug and driver_type in ['firefox', 'chrome']:
+        params['headless'] = False
+        params['scale_factor'] = 1.0
+
+    driver = driver_loader_fn(driver_path, **params)
+
+    driver.get('https://bot.sannysoft.com/')
+    page_trace(driver, 'bot-test')
+
+
 if __name__ == '__main__':
     logging.basicConfig(
         filename='app.log',
@@ -549,6 +564,9 @@ if __name__ == '__main__':
     monitor_parser.add_argument('--period-seconds', type=int, default=15*60, required=False)
     monitor_parser.set_defaults(command='monitor')
 
+    bot_check_parser = subparsers.add_parser('bot-check')
+    bot_check_parser.set_defaults(command='bot-check')
+
     args = parser.parse_args()
 
     log_level = args.log_level.upper() if args.log_level else None
@@ -568,8 +586,14 @@ if __name__ == '__main__':
         check_once(
             debug=args.debug,
         )
-    else:
+    elif args.command == 'monitor':
         monitor(
             period_seconds=args.period_seconds,
             debug=args.debug,
         )
+    elif args.command == 'bot-check':
+        bot_check(
+            debug=args.debug,
+        )
+    else:
+        raise RuntimeError('unknown command: %s' % args.command)

@@ -54,7 +54,8 @@ class ProxyHost:
 
     def stop(self):
         if self.proc is None:
-            raise Exception('it is not running!')
+            logger.warning('stop request issued, but proxy is not running')
+            return
 
         logger.info('stopping mitmproxy...')
 
