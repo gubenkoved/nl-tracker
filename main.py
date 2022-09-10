@@ -48,10 +48,18 @@ def get_chrome_driver(
 
     options = webdriver.ChromeOptions()
     options.add_argument(f'--user-agent={USER_AGENT}')
-    options.add_argument('--window-size=1024,768')
+    options.add_argument('--log-level=3')  # disable logs
+    options.add_argument('--start-maximized')
+    # options.add_argument('--window-size=1024,768')
+
+    # for some reason setting the DPI "the right way" does not work to get
+    # elements screenshots in a good quality... it does work when capturing the
+    # whole page, but not individual elements' screenshots
+    # I've also tried working around by using page zoom level, but then the
+    # element screenshot are not working correctly at all -- screenshots have
+    # wrong parts of the page captured
     options.add_argument(f'--high-dpi-support={scale_factor}')
     options.add_argument(f'--force-device-scale-factor={scale_factor}')
-    options.add_argument('--log-level=3')  # disable logs
 
     options.add_argument('--disable-blink-features')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -64,6 +72,7 @@ def get_chrome_driver(
 
     # this does not work for Chrome driver:
     # options.proxy = proxy
+
     if proxy:
         options.accept_insecure_certs = True
         options.add_argument('--proxy-server=http://%s' % proxy.httpProxy)
@@ -554,8 +563,13 @@ def bot_test(headless: bool = None) -> None:
     driver.get('https://bot.sannysoft.com/')
     page_trace(driver, 'bot-test')
 
+    for table_idx, table in enumerate(driver.find_elements(By.TAG_NAME, 'table')):
+        element_screenshot_path = get_screenshot_path(
+            'bot-test-table-%s' % table_idx)
+        table.screenshot(element_screenshot_path)
+
     if headless is False:
-        logger.info('waiting 10 seconds before exit')
+        logger.info('waiting 10 seconds before exit...')
         time.sleep(10)
 
 
