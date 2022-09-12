@@ -474,13 +474,21 @@ def check_once(headless: bool = None) -> None:
                         added_something = True
                         available_times = [
                             slot.formatted_time
-                            for slot in result.slots if slot.month == month and slot.day == day
+                            for slot in result.slots
+                            if slot.month == month and slot.day == day
                         ]
-                        assert len(available_times) > 0
-                        diff_description += '🟢 %s %s (%s)\n' % (day, month, ', '.join(available_times))
+                        available_slot_count = len(available_times)
+                        assert available_slot_count > 0
+                        diff_description += '🟢 %s %s (%s %s)\n' % (
+                            day, month, available_slot_count,
+                            'slot' if available_slot_count == 1 else 'slots')
 
                 notification_text += '\n\n' + diff_description
                 notification_text += '\n' + URL
+
+                # cut the message if too long to at least send it successfully
+                if len(notification_text) > 1000:
+                    notification_text = notification_text[:1000] + ' (cut)'
 
                 # attach text to the first screenshot to be displayed
                 media[0].caption = notification_text
