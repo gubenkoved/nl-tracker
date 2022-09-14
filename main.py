@@ -8,6 +8,7 @@ import pickle
 import time
 from datetime import datetime
 from typing import List, OrderedDict, Dict, Any
+import re
 
 import coloredlogs
 import pytz
@@ -30,7 +31,8 @@ from proxy_host import ProxyHost
 URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
 CITY = 'Moscow'
 VISA_CATEGORY = 'MVV – visa for long stay (>90 days)'
-NO_DATES_MARKER = 'No date(s) available for appointment'
+NO_DATES_MARKER = re.compile(
+    r'(No date\(s\) available for appointment)|(No Appointment slots available)')
 
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
              '(KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36'
@@ -219,7 +221,7 @@ def get_available_slots_diff(baseline: collections.OrderedDict, current: collect
 
 def is_no_dates_available_marker_present(driver: WebDriver):
     message_span = utils.find_element_safe(driver, By.ID, 'plhMain_lblMsg')
-    return message_span and NO_DATES_MARKER in message_span.text
+    return message_span and NO_DATES_MARKER.search(message_span.text)
 
 
 def is_captcha_screen_present(driver: WebDriver):
