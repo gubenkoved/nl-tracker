@@ -240,28 +240,32 @@ def element_screenshot(driver: WebDriver, element: WebElement):
 
 
 def element_screenshot_chrome(driver: webdriver.Chrome, element: WebElement):
+    # https://stackoverflow.com/questions/39600245/how-to-capture-website-screenshot-in-high-resolution
     driver.execute_script("arguments[0].scrollIntoView(true);", element)
     screenshot_png = driver.get_screenshot_as_png()
     screenshot_img = Image.open(BytesIO(screenshot_png))
-    location, size = element.location_once_scrolled_into_view, element.size
+
     win_size = driver.get_window_size()
     win_h, win_w = win_size['height'], win_size['width']
+
+    location, size = element.location_once_scrolled_into_view, element.size
+
     x, y = location['x'], location['y']
     h, w = size['height'], size['width']
 
     h, w = min(win_h, h), min(win_w, w)
 
-    # TODO: get rid of hard-coded scale -- retrieve from the driver settings
-    scale = 2
+    scale_arg = next(
+        (arg for arg in driver.options.arguments
+         if arg.startswith('--force-device-scale-factor=')), '1.0')
+    scale = float(scale_arg.replace('--force-device-scale-factor=', ''))
 
     x = x * scale
     y = y * scale
     w = w * scale
     h = h * scale
 
-    cropped_img = screenshot_img.crop(
-        (x, y, x + w, y + h)
-    )
+    cropped_img = screenshot_img.crop((x, y, x + w, y + h))
 
     img_bytes = BytesIO()
     cropped_img.save(img_bytes, format='PNG')
@@ -616,7 +620,6 @@ def bot_test(headless: bool = None) -> None:
     page_trace(driver, 'bot-test')
 
     for table_idx, table in enumerate(driver.find_elements(By.TAG_NAME, 'table')):
-        logger.info('rect: %s, loc: %s, loc2: %s', table.rect, table.location, table.location_once_scrolled_into_view)
         driver.execute_script("arguments[0].scrollIntoView(true);", table)
         element_screenshot_path = get_screenshot_path(
             'bot-test-table-%s' % table_idx)
