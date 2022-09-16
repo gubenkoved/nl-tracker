@@ -43,6 +43,18 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 logger = logging.getLogger(__name__)
 
 
+class DriverParameters:
+    def __init__(self, headless: bool = None, scale_factor: float = None):
+        self.headless = headless
+        self.scale_factor = scale_factor
+
+    def as_dict(self):
+        return {
+            k: v for k, v in self.__dict__.items()
+            if v is not None
+        }
+
+
 def get_chrome_driver(
         path: str,
         headless: bool = True,
@@ -438,7 +450,7 @@ def load_cookies(driver: WebDriver) -> None:
             driver.add_cookie(cookie)
 
 
-def check_once(headless: bool = None) -> None:
+def check_once(driver_params: DriverParameters) -> None:
     logger.debug('starting')
 
     driver = None
@@ -459,11 +471,7 @@ def check_once(headless: bool = None) -> None:
         proxy_config.httpProxy = 'localhost:%d' % proxy_port
         proxy_config.sslProxy = 'localhost:%d' % proxy_port
 
-        params = {}
-
-        if headless is not None:
-            params['headless'] = headless
-
+        params = driver_params.as_dict()
         params['proxy'] = proxy_config
 
         driver = driver_loader_fn(driver_path, **params)
@@ -592,29 +600,24 @@ def check_once(headless: bool = None) -> None:
         proxy_host.stop()
 
 
-def monitor(period_seconds: int, headless: bool = None) -> None:
+def monitor(period_seconds: int, driver_params: DriverParameters) -> None:
     while True:
         try:
-            check_once(headless=headless)
+            check_once(driver_params)
         except Exception:
             # swallow exceptions, they are logged anyway already
             pass
         time.sleep(period_seconds)
 
 
-def bot_test(headless: bool = None) -> None:
+def bot_test(driver_params: DriverParameters) -> None:
     config = read_config()
 
     driver_path = require_config_key(config, 'driver_path')
     driver_type = config.get('driver_type', 'firefox').lower()
     driver_loader_fn = get_driver_loader(driver_type)
 
-    params = {}
-
-    if headless is not None:
-        params['headless'] = headless
-
-    driver = driver_loader_fn(driver_path, **params)
+    driver = driver_loader_fn(driver_path, **driver_params.as_dict())
 
     driver.get('https://bot.sannysoft.com/')
     page_trace(driver, 'bot-test')
@@ -626,7 +629,7 @@ def bot_test(headless: bool = None) -> None:
         screenshot_data = element_screenshot(driver, table)
         save_image(screenshot_data, element_screenshot_path)
 
-    if headless is False:
+    if driver_params.headless is False:
         logger.info('waiting 10 seconds before exit...')
         time.sleep(10)
 
@@ -654,6 +657,7 @@ if __name__ == '__main__':
     parser.add_argument('--log-level', type=str, default=None, required=False)
     parser.add_argument('--headless', type=str_to_bool, default=True,
                         choices=[False, True])
+    parser.add_argument('--scale', type=float, default=2.0)
 
     subparsers = parser.add_subparsers()
 
@@ -678,18 +682,19 @@ if __name__ == '__main__':
 
     logger.info('parsed args: %s', args)
 
-    if args.command == 'check':
-        check_once(
-            headless=args.headless,
-        )
+    driver_params = DriverParameters(
+        headless=args.headless,
+        scale_factor=args.scale,
+    )
+
+    if args.command in ['check', 'monitor']:
+        check_once(driver_params)
     elif args.command == 'monitor':
         monitor(
             period_seconds=args.period_seconds,
-            headless=args.headless,
+            driver_params=driver_params,
         )
     elif args.command == 'bot-test':
-        bot_test(
-            headless=args.headless,
-        )
+        bot_test(driver_params)
     else:
         raise RuntimeError('unknown command: %s' % args.command)
