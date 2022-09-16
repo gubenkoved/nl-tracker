@@ -572,7 +572,7 @@ def check_once(headless: bool = None) -> None:
         logger.info('cookies saved')
     except Exception:
         if driver:
-            driver.save_screenshot(get_screenshot_path('error'))
+            page_trace(driver, 'error', screenshot=True)
 
             if not is_captcha_screen_present(driver):
                 logger.info('saving cookies even with error occurred, because '
