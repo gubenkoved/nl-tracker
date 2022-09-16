@@ -5,22 +5,24 @@ import json
 import logging
 import os.path
 import pickle
+import re
 import time
 from datetime import datetime
+from io import BytesIO
 from typing import List, OrderedDict, Dict, Any
-import re
 
 import coloredlogs
 import pytz
 import telegram
 import telegram.ext
 import undetected_chromedriver
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.firefox.service import Service as FFService
-from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webdriver import WebDriver, WebElement
 from selenium.webdriver.support.ui import Select
 
 import captcha.solver
@@ -231,6 +233,46 @@ def is_captcha_screen_present(driver: WebDriver):
     return captcha_marker is not None
 
 
+def element_screenshot(driver: WebDriver, element: WebElement):
+    if isinstance(driver, webdriver.Chrome):
+        return element_screenshot_chrome(driver, element)
+    return element.screenshot_as_png
+
+
+def element_screenshot_chrome(driver: webdriver.Chrome, element: WebElement):
+    driver.execute_script("arguments[0].scrollIntoView(true);", element)
+    screenshot_png = driver.get_screenshot_as_png()
+    screenshot_img = Image.open(BytesIO(screenshot_png))
+    location, size = element.location_once_scrolled_into_view, element.size
+    win_size = driver.get_window_size()
+    win_h, win_w = win_size['height'], win_size['width']
+    x, y = location['x'], location['y']
+    h, w = size['height'], size['width']
+
+    h, w = min(win_h, h), min(win_w, w)
+
+    # TODO: get rid of hard-coded scale -- retrieve from the driver settings
+    scale = 2
+
+    x = x * scale
+    y = y * scale
+    w = w * scale
+    h = h * scale
+
+    cropped_img = screenshot_img.crop(
+        (x, y, x + w, y + h)
+    )
+
+    img_bytes = BytesIO()
+    cropped_img.save(img_bytes, format='PNG')
+    return img_bytes.getvalue()
+
+
+def save_image(data: bytes, path: str):
+    with open(path, 'wb') as f:
+        f.write(data)
+
+
 def check_available_slots(driver: WebDriver):
     driver.get(URL)
 
@@ -315,7 +357,7 @@ def check_available_slots(driver: WebDriver):
     while True:
         calendar_table = driver.find_element(By.ID, 'plhMain_cldAppointment')
 
-        calendar_screenshot = calendar_table.screenshot_as_png
+        calendar_screenshot = element_screenshot(driver, calendar_table)
         calendar_screenshots.append(calendar_screenshot)
 
         month_slots = parse_available_dates(driver)
@@ -574,9 +616,12 @@ def bot_test(headless: bool = None) -> None:
     page_trace(driver, 'bot-test')
 
     for table_idx, table in enumerate(driver.find_elements(By.TAG_NAME, 'table')):
+        logger.info('rect: %s, loc: %s, loc2: %s', table.rect, table.location, table.location_once_scrolled_into_view)
+        driver.execute_script("arguments[0].scrollIntoView(true);", table)
         element_screenshot_path = get_screenshot_path(
             'bot-test-table-%s' % table_idx)
-        table.screenshot(element_screenshot_path)
+        screenshot_data = element_screenshot(driver, table)
+        save_image(screenshot_data, element_screenshot_path)
 
     if headless is False:
         logger.info('waiting 10 seconds before exit...')
