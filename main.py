@@ -414,17 +414,27 @@ def require_config_key(config: Dict[str, Any], config_key: str) -> Any:
     return config[config_key]
 
 
-def read_state() -> Dict[str, Any]:
-    path = 'state.json'
-    if not os.path.exists(path):
-        return {}
-    with open('state.json', 'r') as f:
-        return json.loads(f.read())
+class StateProviderBase:
+    def get(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def save(self, state: Dict[str, Any]):
+        raise NotImplementedError
 
 
-def save_state(state: Dict[str, Any]):
-    with open('state.json', 'w') as f:
-        f.write(json.dumps(state))
+class JsonFileStateProvider(StateProviderBase):
+    def __init__(self, path):
+        self.path = path
+
+    def get(self) -> Dict[str, Any]:
+        if not os.path.exists(self.path):
+            return {}
+        with open(self.path, 'r') as f:
+            return json.loads(f.read())
+
+    def save(self, state: Dict[str, Any]):
+        with open(self.path, 'w') as f:
+            f.write(json.dumps(state))
 
 
 def save_cookies(driver: WebDriver) -> None:
@@ -444,7 +454,9 @@ def load_cookies(driver: WebDriver) -> None:
             driver.add_cookie(cookie)
 
 
-def check_once(driver_params: DriverParameters, config: ConfigType) -> None:
+def check_once(
+        driver_params: DriverParameters, config: ConfigType,
+        state_provider: StateProviderBase) -> None:
     logger.debug('starting')
 
     driver = None
@@ -483,7 +495,7 @@ def check_once(driver_params: DriverParameters, config: ConfigType) -> None:
             timeout=10,
         ))
 
-        state = read_state()
+        state = state_provider.get()
         result = check_available_slots(driver, config=config)
 
         def get_available_dates(slots: List[AvailableSlot]) -> OrderedDict[str, List[int]]:
@@ -565,7 +577,7 @@ def check_once(driver_params: DriverParameters, config: ConfigType) -> None:
             status = '⚡ Last checked at %s (Moscow time)' % now_string
             bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
-        save_state(dict(
+        state_provider.save(dict(
             state,
             available_slots=[slot.to_dict() for slot in result.slots],
             timestamp=time.time()
@@ -594,12 +606,15 @@ def check_once(driver_params: DriverParameters, config: ConfigType) -> None:
         proxy_host.stop()
 
 
-def monitor(period_seconds: int, driver_params: DriverParameters, config: ConfigType) -> None:
+def monitor(
+        period_seconds: int, driver_params: DriverParameters, config: ConfigType,
+        state_provider: StateProviderBase) -> None:
     while True:
         try:
             check_once(
                 driver_params=driver_params,
-                config=config
+                config=config,
+                state_provider=state_provider,
             )
         except Exception:
             # swallow exceptions, they are logged anyway already
@@ -653,7 +668,8 @@ if __name__ == '__main__':
     parser.add_argument('--headless', type=str_to_bool, default=True,
                         choices=[False, True])
     parser.add_argument('--scale', type=float, default=2.0)
-    parser.add_argument('--config', type=str, default='config.json', required=False)
+    parser.add_argument('--config-path', type=str, default='config.json', required=False)
+    parser.add_argument('--state-path', type=str, default='state.json', required=False)
 
     subparsers = parser.add_subparsers()
 
@@ -683,18 +699,21 @@ if __name__ == '__main__':
         scale_factor=args.scale,
     )
 
-    config = read_config(args.config)
+    config = read_config(args.config_path)
+    state_provider = JsonFileStateProvider(args.state_path)
 
     if args.command in ['check', 'monitor']:
         check_once(
             driver_params=driver_params,
             config=config,
+            state_provider=state_provider,
         )
     elif args.command == 'monitor':
         monitor(
             period_seconds=args.period_seconds,
             driver_params=driver_params,
             config=config,
+            state_provider=state_provider,
         )
     elif args.command == 'bot-test':
         bot_test(
