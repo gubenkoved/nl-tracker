@@ -30,9 +30,6 @@ import utils
 from model import AvailableSlot, SlotsCheckResults
 from proxy_host import ProxyHost
 
-URL = 'https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D'
-CITY = 'Moscow'
-VISA_CATEGORY = 'MVV – visa for long stay (>90 days)'
 NO_DATES_MARKER_RE = re.compile(
     r'(No date\(s\) available for appointment)|'
     r'(No Appointment slots available)|'
@@ -293,7 +290,13 @@ def save_image(data: bytes, path: str):
 
 
 def check_available_slots(driver: WebDriver):
-    driver.get(URL)
+    config = read_config()
+
+    scheduling_url = require_config_key(config, 'scheduling_url')
+    scheduling_city = require_config_key(config, 'scheduling_city')
+    scheduling_category = require_config_key(config, 'scheduling_category')
+
+    driver.get(scheduling_url)
 
     page_trace(driver, 'loaded')
 
@@ -322,7 +325,7 @@ def check_available_slots(driver: WebDriver):
 
     city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
     city_picker_select = Select(city_picker)
-    city_picker_select.select_by_visible_text(CITY)
+    city_picker_select.select_by_visible_text(scheduling_city)
 
     city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
     city_submit_btn.click()
@@ -331,7 +334,7 @@ def check_available_slots(driver: WebDriver):
 
     category_picker = driver.find_element(By.ID, 'plhMain_cboVisaCategory')
     category_picker_select = Select(category_picker)
-    category_picker_select.select_by_visible_text(VISA_CATEGORY)
+    category_picker_select.select_by_visible_text(scheduling_category)
 
     continue_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
     continue_btn.click()
@@ -462,6 +465,8 @@ def check_once(driver_params: DriverParameters) -> None:
         driver_type = config.get('driver_type', 'firefox').lower()
         driver_loader_fn = get_driver_loader(driver_type)
 
+        scheduling_url = require_config_key(config, 'scheduling_url')
+
         proxy_port = 8080
         proxy_host.start(port=proxy_port)
 
@@ -477,7 +482,7 @@ def check_once(driver_params: DriverParameters) -> None:
 
         logger.info('loading cookies...')
         # setting cookie requires current context to be matching domain
-        driver.get(URL)
+        driver.get(scheduling_url)
         load_cookies(driver)
         logger.info('loaded cookies')
 
@@ -539,7 +544,7 @@ def check_once(driver_params: DriverParameters) -> None:
                             'slot' if available_slot_count == 1 else 'slots')
 
                 notification_text += '\n\n' + diff_description
-                notification_text += '\n' + URL
+                notification_text += '\n' + scheduling_url
 
                 # cut the message if too long to at least send it successfully
                 if len(notification_text) > 1000:

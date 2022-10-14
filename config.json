@@ -4,5 +4,8 @@
   "telegram_chat_id": "INSERT VALUE HERE",
   "telegram_status_message_id": "OPTIONALLY INSERT VALUE HERE TO MAINTAIN STATUS MESSAGE",
   "telegram_bot_api_token": "INSERT VALUE HERE",
-  "anticaptcha_api_key": "OPTIONALLY INSERT VALUE HERE"
+  "anticaptcha_api_key": "OPTIONALLY INSERT VALUE HERE",
+  "scheduling_url": "https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D",
+  "scheduling_city": "Moscow",
+  "scheduling_category": "MVV – visa for long stay (>90 days)"
 }
