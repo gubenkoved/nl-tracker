@@ -323,14 +323,15 @@ def check_available_slots(driver: WebDriver, config: ConfigType):
 
     page_trace(driver, 'schedule-clicked')
 
-    city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
-    city_picker_select = Select(city_picker)
-    city_picker_select.select_by_visible_text(scheduling_city)
+    if scheduling_city:
+        city_picker = driver.find_element(By.ID, 'plhMain_cboVAC')
+        city_picker_select = Select(city_picker)
+        city_picker_select.select_by_visible_text(scheduling_city)
 
-    city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
-    city_submit_btn.click()
+        city_submit_btn = driver.find_element(By.ID, 'plhMain_btnSubmit')
+        city_submit_btn.click()
 
-    page_trace(driver, 'city-submitted')
+        page_trace(driver, 'city-submitted')
 
     category_picker = driver.find_element(By.ID, 'plhMain_cboVisaCategory')
     category_picker_select = Select(category_picker)
