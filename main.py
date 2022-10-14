@@ -468,6 +468,7 @@ def check_once(
         driver_loader_fn = get_driver_loader(driver_type)
 
         scheduling_url = require_config_key(config, 'scheduling_url')
+        scheduling_tz = config.get('scheduling_tz', 'Europe/Moscow')
 
         proxy_port = 8080
         proxy_host.start(port=proxy_port)
@@ -571,10 +572,16 @@ def check_once(
 
         status_message_id = config.get('telegram_status_message_id')
         if status_message_id:
-            tz = pytz.timezone('Europe/Moscow')
+            tz = pytz.timezone(scheduling_tz)
+
+            if tz is None:
+                logger.debug('All timezones: %s', pytz.all_timezones)
+                raise Exception('Unable to find timezone "%s"' % scheduling_tz)
+
             now = datetime.now(tz)
             now_string = now.strftime('%H:%M on %b %d')
-            status = '⚡ Last checked at %s (Moscow time)' % now_string
+            tz_city = scheduling_tz.split('/')[-1]
+            status = '⚡ Last checked at %s (%s time)' % (now_string, tz_city)
             bot.edit_message_text(chat_id=telegram_chat_id, message_id=status_message_id, text=status)
 
         state_provider.save(dict(

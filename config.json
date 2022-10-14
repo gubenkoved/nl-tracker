@@ -7,5 +7,6 @@
   "anticaptcha_api_key": "OPTIONALLY INSERT VALUE HERE",
   "scheduling_url": "https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D",
   "scheduling_city": "Moscow",
-  "scheduling_category": "MVV – visa for long stay (>90 days)"
+  "scheduling_category": "MVV – visa for long stay (>90 days)",
+  "scheduling_tz": "Europe/Moscow"
 }
