@@ -40,6 +40,9 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
              '(KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36'
 
 
+ConfigType = Dict[str, Any]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -289,9 +292,7 @@ def save_image(data: bytes, path: str):
         f.write(data)
 
 
-def check_available_slots(driver: WebDriver):
-    config = read_config()
-
+def check_available_slots(driver: WebDriver, config: ConfigType):
     scheduling_url = require_config_key(config, 'scheduling_url')
     scheduling_city = require_config_key(config, 'scheduling_city')
     scheduling_category = require_config_key(config, 'scheduling_category')
@@ -301,7 +302,6 @@ def check_available_slots(driver: WebDriver):
     page_trace(driver, 'loaded')
 
     if is_captcha_screen_present(driver):
-        config = read_config()
         anticaptcha_api_key = config.get('anticaptcha_api_key')
         if anticaptcha_api_key:
             captcha.solver.solve_captcha(driver, anticaptcha_api_key)
@@ -398,22 +398,13 @@ def check_available_slots(driver: WebDriver):
     return SlotsCheckResults(available_slots, calendar_screenshots)
 
 
-def read_config() -> Dict[str, Any]:
-    logger.debug('reading configuration')
-    probe_order = [
-        'dev.config.json',
-        'local.config.json',
-        'config.json'
-    ]
+def read_config(path: str) -> ConfigType:
+    logger.debug('reading configuration at %s', path)
 
-    for path in probe_order:
-        if not os.path.exists(path):
-            continue
-        logger.debug('config path: %s', path)
-        with open(path, 'r') as f:
-            data = json.loads(f.read())
-            logger.debug('config: %s', data)
-            return data
+    with open(path, 'r') as f:
+        data = json.loads(f.read())
+        logger.debug('config: %s', data)
+        return data
 
 
 def require_config_key(config: Dict[str, Any], config_key: str) -> Any:
@@ -452,15 +443,13 @@ def load_cookies(driver: WebDriver) -> None:
             driver.add_cookie(cookie)
 
 
-def check_once(driver_params: DriverParameters) -> None:
+def check_once(driver_params: DriverParameters, config: ConfigType) -> None:
     logger.debug('starting')
 
     driver = None
     proxy_host = ProxyHost()
 
     try:
-        config = read_config()
-
         driver_path = require_config_key(config, 'driver_path')
         driver_type = config.get('driver_type', 'firefox').lower()
         driver_loader_fn = get_driver_loader(driver_type)
@@ -494,7 +483,7 @@ def check_once(driver_params: DriverParameters) -> None:
         ))
 
         state = read_state()
-        result = check_available_slots(driver)
+        result = check_available_slots(driver, config=config)
 
         def get_available_dates(slots: List[AvailableSlot]) -> OrderedDict[str, List[int]]:
             result = collections.defaultdict(set)  # month -> days
@@ -604,19 +593,20 @@ def check_once(driver_params: DriverParameters) -> None:
         proxy_host.stop()
 
 
-def monitor(period_seconds: int, driver_params: DriverParameters) -> None:
+def monitor(period_seconds: int, driver_params: DriverParameters, config: ConfigType) -> None:
     while True:
         try:
-            check_once(driver_params)
+            check_once(
+                driver_params=driver_params,
+                config=config
+            )
         except Exception:
             # swallow exceptions, they are logged anyway already
             pass
         time.sleep(period_seconds)
 
 
-def bot_test(driver_params: DriverParameters) -> None:
-    config = read_config()
-
+def bot_test(driver_params: DriverParameters, config: ConfigType) -> None:
     driver_path = require_config_key(config, 'driver_path')
     driver_type = config.get('driver_type', 'firefox').lower()
     driver_loader_fn = get_driver_loader(driver_type)
@@ -662,6 +652,7 @@ if __name__ == '__main__':
     parser.add_argument('--headless', type=str_to_bool, default=True,
                         choices=[False, True])
     parser.add_argument('--scale', type=float, default=2.0)
+    parser.add_argument('--config', type=str, default='config.json', required=False)
 
     subparsers = parser.add_subparsers()
 
@@ -691,14 +682,23 @@ if __name__ == '__main__':
         scale_factor=args.scale,
     )
 
+    config = read_config(args.config)
+
     if args.command in ['check', 'monitor']:
-        check_once(driver_params)
+        check_once(
+            driver_params=driver_params,
+            config=config,
+        )
     elif args.command == 'monitor':
         monitor(
             period_seconds=args.period_seconds,
             driver_params=driver_params,
+            config=config,
         )
     elif args.command == 'bot-test':
-        bot_test(driver_params)
+        bot_test(
+            driver_params=driver_params,
+            config=config,
+        )
     else:
         raise RuntimeError('unknown command: %s' % args.command)
