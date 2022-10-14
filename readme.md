@@ -41,3 +41,19 @@ With Xvfb you can simply run it like:
 ```bash
 xvfb-run python main.py --headless=False check
 ```
+
+# Parameters
+
+## Moscow
+
+```
+https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=OG3X2CQ4L1NjVC94HrXIC7tGMHIlhh8IdveJteoOegY%3D
+```
+
+## Dubai
+
+```
+https://www.vfsvisaonline.com/Netherlands-Global-Online-Appointment_Zone2/AppScheduling/AppWelcome.aspx?P=CE0jbgR7fd0NTf6eHZaG9Ksnpf50voAKsauBjihfkds%3D
+```
+
+Specify `null` as city because only one city is available.
